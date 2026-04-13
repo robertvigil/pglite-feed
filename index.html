@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feed</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Courier New', monospace;
+      background: #111; color: #0f0;
+      max-width: 900px; margin: 0 auto; padding: 8px 20px;
+    }
+    h1 { color: #0f0; margin: 0 0 8px; font-size: 1.2em; }
+
+    /* Date range controls */
+    .controls {
+      display: flex; gap: 10px; align-items: center;
+      margin-bottom: 15px; flex-wrap: wrap;
+    }
+    .controls label { color: #888; font-size: 0.85em; }
+    .controls input[type="date"] {
+      padding: 6px 8px; font-size: 14px;
+      background: #222; color: #0f0; border: 1px solid #0f0;
+      border-radius: 3px; font-family: inherit;
+    }
+    .controls button,
+    .controls .help-link {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 36px; height: 30px; padding: 0 8px;
+      background: #222; color: #0f0; border: 1px solid #555;
+      border-radius: 3px; cursor: pointer; font-family: inherit;
+      font-size: 13px; text-decoration: none;
+    }
+    .controls button:hover,
+    .controls .help-link:hover { border-color: #0f0; }
+
+    /* Search bar */
+    .search-bar { margin-bottom: 10px; position: relative; }
+    .search-bar input {
+      width: 100%; padding: 7px 32px 7px 10px; font-size: 14px;
+      background: #222; color: #0f0; border: 1px solid #0f0;
+      border-radius: 3px; font-family: inherit;
+    }
+    .search-bar input::placeholder { color: #555; }
+    #clear-search {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: #555; font-size: 18px;
+      cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+    #clear-search:hover { color: #f66; }
+
+    /* Results table */
+    table {
+      width: 100%; border-collapse: collapse;
+      background: #1a1a1a; font-size: 0.9em;
+    }
+    th, td { border: 1px solid #333; padding: 5px 10px; text-align: left; }
+    th { background: #222; color: #0f0; }
+    th:first-child, td:first-child { white-space: nowrap; }
+    tr:hover { background: #222; }
+    td a { color: #0f0; }
+    .tag-link:hover { text-decoration: underline; }
+
+    /* Totals panel */
+    .totals {
+      margin-top: 15px; padding: 10px 8px;
+      background: #1a2a1a; border: 1px solid #0f0;
+      border-radius: 4px; display: flex; gap: 15px;
+      font-size: 0.95em;
+    }
+    .totals .item { display: flex; gap: 4px; }
+    .totals .label { color: #888; }
+    .totals .value { color: #0f0; font-weight: bold; }
+
+    /* Action bar + create form */
+    .action-bar {
+      display: flex; gap: 8px; align-items: center;
+      margin-bottom: 10px;
+    }
+    .action-bar button {
+      padding: 2px 8px; font-size: 22px;
+      background: transparent; color: #666; border: none;
+      cursor: pointer; font-family: inherit; line-height: 1;
+    }
+    .action-bar button:hover { color: #0f0; }
+    .create-form {
+      display: none; flex-wrap: wrap; gap: 8px; align-items: center;
+      margin-bottom: 15px; padding: 10px;
+      background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
+    }
+    .create-form.open { display: flex; }
+    .create-form input {
+      padding: 6px 8px; font-size: 14px;
+      background: #222; color: #0f0; border: 1px solid #0f0;
+      border-radius: 3px; font-family: inherit;
+    }
+    .create-form input[type="date"] { width: 150px; }
+    .create-form input.content-input { flex: 1; min-width: 250px; }
+    .create-form .actions { display: flex; gap: 2px; }
+    .create-form button {
+      padding: 2px 8px; font-size: 22px;
+      background: transparent; color: #666; border: none;
+      cursor: pointer; font-family: inherit; line-height: 1;
+    }
+    .create-form button[type="submit"]:hover { color: #0f0; }
+    .create-form button.cancel:hover { color: #f66; }
+
+    /* Row action buttons */
+    td.actions { white-space: nowrap; text-align: right; width: 1px; }
+    td.actions button {
+      padding: 2px 6px; font-size: 18px; margin-left: 2px;
+      background: transparent; color: #666; border: none;
+      cursor: pointer; font-family: inherit; line-height: 1;
+    }
+    td.actions button:hover { color: #0f0; }
+    td.actions button.delete:hover { color: #f66; }
+    td.actions button.save { color: #0f0; font-weight: bold; }
+    td.actions button.cancel:hover { color: #f66; }
+
+    /* Inline edit inputs */
+    tr.editing td input {
+      width: 100%; padding: 3px 5px; font-size: 0.85em;
+      background: #222; color: #0f0; border: 1px solid #0f0;
+      border-radius: 2px; font-family: inherit;
+    }
+    tr.editing td input[type="date"] { width: auto; }
+
+    /* Mobile */
+    @media (max-width: 600px) {
+      table, tbody, tr, td { display: block; width: 100%; }
+      table tr:first-child th { display: none; }
+      table tr:has(th) { display: none; }
+      tr {
+        border: 1px solid #333; border-radius: 4px;
+        padding: 6px 8px; margin-bottom: 6px;
+      }
+      td { border: none; padding: 1px 0; }
+      td:nth-child(1) { display: inline-block; width: auto; padding-right: 10px; font-size: 0.85em; color: #888; }
+      td.content-cell { display: inline; }
+      td.actions { display: inline; padding-left: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>[feed]</h1>
+
+  <div class="controls">
+    <input type="date" id="begin-date">
+    <label>→</label>
+    <input type="date" id="end-date">
+    <button id="this-week">Wk</button>
+    <button id="this-month">Mo</button>
+    <button id="this-year">Yr</button>
+    <button id="all-time" title="All time">∞</button>
+    <a href="https://github.com/robertvigil/pglite-feed" target="_blank" rel="noopener" title="Help / docs" class="help-link">?</a>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="search" placeholder='Search — "keyword" (AND), "-exclude", "#tag", "#" for tag cloud' autocomplete="off">
+    <span id="clear-search" title="Clear search">&times;</span>
+  </div>
+
+  <!-- Admin-only action bar (hidden in read-only mode) -->
+  <div class="action-bar" id="action-bar" style="display:none">
+    <button id="create-toggle" title="New entry">✚</button>
+    <button id="save-json" title="Save JSON">↓</button>
+    <button id="open-json" title="Open JSON">↑</button>
+    <input type="file" id="json-input" accept=".json" style="display:none">
+  </div>
+  <form class="create-form" id="create-form">
+    <input type="date" id="new-date" required>
+    <input type="text" id="new-content" class="content-input" placeholder="content (use #tags for categories)" required>
+    <div class="actions">
+      <button type="submit" title="Save">✓</button>
+      <button type="button" class="cancel" id="create-cancel" title="Cancel">↺</button>
+    </div>
+  </form>
+
+  <div id="output">Loading...</div>
+  <div id="totals" class="totals" style="display:none"></div>
+
+  <script type="module">
+    import { PGlite } from 'https://cdn.jsdelivr.net/npm/@electric-sql/pglite/dist/index.js';
+
+    // --- URL parameter parsing ---
+    const params = new URLSearchParams(location.search);
+    const isAdmin = params.has('admin');
+
+    // --- Init PGlite ---
+    const db = new PGlite('idb://feed-v3');
+
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS feed (
+        id SERIAL PRIMARY KEY,
+        feed_date DATE NOT NULL,
+        feed_content TEXT NOT NULL,
+        UNIQUE (feed_date, feed_content)
+      );
+      CREATE TABLE IF NOT EXISTS config (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `);
+
+    // --- Auto-load feed.json on empty DB ---
+    const count = await db.query('SELECT COUNT(*) AS n FROM feed;');
+    if (count.rows[0].n === 0n || count.rows[0].n === 0) {
+      try {
+        document.getElementById('output').textContent = 'Loading feed.json...';
+        const resp = await fetch('feed.json');
+        if (resp.ok) {
+          const data = await resp.json();
+          for (const row of data) {
+            await db.query(
+              'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
+              [row.feed_date, row.feed_content]
+            );
+          }
+        }
+      } catch (e) {
+        // feed.json not found — start empty
+      }
+    }
+
+    // --- Show admin controls if ?admin ---
+    if (isAdmin) {
+      document.getElementById('action-bar').style.display = 'flex';
+    }
+
+    // --- Helpers ---
+    function iso(d) { return d.toISOString().split('T')[0]; }
+
+    function getCurrentWeek() {
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      return { begin: iso(monday), end: iso(sunday) };
+    }
+
+    function getCurrentMonth() {
+      const now = new Date();
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return { begin: iso(first), end: iso(last) };
+    }
+
+    function getCurrentYear() {
+      const now = new Date();
+      return { begin: `${now.getFullYear()}-01-01`, end: `${now.getFullYear()}-12-31` };
+    }
+
+    function getAllTime() {
+      return { begin: '1970-01-01', end: '2099-12-31' };
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function renderContent(text) {
+      let out = escapeHtml(text);
+      // Markdown-style links: [text](url) — supports absolute and relative URLs
+      // External links open in new tab, relative links open in same tab
+      out = out.replace(
+        /\[([^\]]+)\]\(([^\s)]+)\)/g,
+        (_, text, url) => url.startsWith('http')
+          ? `<a href="${url}" target="_blank" rel="noopener">${text}</a>`
+          : `<a href="${url}">${text}</a>`
+      );
+      // Bare URLs — only if not already inside an href="..."
+      out = out.replace(
+        /(?<!href=")(https?:\/\/[^\s<]+)(?![^<]*<\/a>)/g,
+        '<a href="$1" target="_blank" rel="noopener">$1</a>'
+      );
+      return out;
+    }
+
+    // --- Search parser ---
+    // Parses search input into a mode + terms:
+    //   empty       → mode: 'default' (show non-tagged entries only)
+    //   "#"         → mode: 'tagcloud' (show tag cloud with counts)
+    //   "#git"      → mode: 'search', terms parsed normally
+    //   "chmod"     → mode: 'search', terms parsed normally
+    //   "git #"     → mode: 'search', lone "#" stripped, treated as "git"
+    function parseSearch(query) {
+      const raw = query.trim();
+
+      // Empty → default mode (non-tagged entries)
+      if (!raw) return { mode: 'default', include: [], exclude: [] };
+
+      // Exactly "#" → tag cloud
+      if (raw === '#') return { mode: 'tagcloud', include: [], exclude: [] };
+
+      // Split into terms, strip any single-character tokens (too broad to be useful)
+      const terms = raw.split(/\s+/).filter(t => t && t.length > 1);
+
+      // If stripping lone "#" leaves nothing, treat as default
+      if (terms.length === 0) return { mode: 'default', include: [], exclude: [] };
+
+      const include = [];
+      const exclude = [];
+      for (const t of terms) {
+        if (t.startsWith('-') && t.length > 1) {
+          exclude.push(t.substring(1));
+        } else {
+          include.push(t);
+        }
+      }
+      return { mode: 'search', include, exclude };
+    }
+
+    function buildSearchClauses({ include, exclude }, startIdx) {
+      const clauses = [];
+      const params = [];
+      let i = startIdx;
+      for (const term of include) {
+        clauses.push(`feed_content ILIKE $${i}`);
+        params.push(`%${term}%`);
+        i++;
+      }
+      for (const term of exclude) {
+        clauses.push(`feed_content NOT ILIKE $${i}`);
+        params.push(`%${term}%`);
+        i++;
+      }
+      return {
+        where: clauses.length ? ' AND ' + clauses.join(' AND ') : '',
+        params,
+      };
+    }
+
+    // --- Tag cloud: show all #tags with counts ---
+    async function showTagCloud(begin, end) {
+      // Extract hashtags from all entries in date range using regex_matches
+      // PGlite supports regexp_matches, but simpler to pull all content and parse in JS
+      const result = await db.query(`
+        SELECT feed_content
+        FROM feed
+        WHERE feed_date BETWEEN $1 AND $2;
+      `, [begin, end]);
+
+      const tagCounts = {};
+      for (const row of result.rows) {
+        const tags = row.feed_content.match(/#\w+/g);
+        if (tags) {
+          for (const tag of tags) {
+            const lower = tag.toLowerCase();
+            tagCounts[lower] = (tagCounts[lower] || 0) + 1;
+          }
+        }
+      }
+
+      // Sort by count descending
+      const sorted = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
+
+      const totalsDiv = document.getElementById('totals');
+      totalsDiv.style.display = 'flex';
+      totalsDiv.innerHTML = `
+        <div class="item"><span class="label">tags:</span><span class="value">${sorted.length}</span></div>
+      `;
+
+      const div = document.getElementById('output');
+      if (sorted.length === 0) {
+        div.innerHTML = '<p style="color:#666">No hashtags found.</p>';
+        return;
+      }
+
+      div.innerHTML = '<p style="line-height:2">' +
+        sorted.map(([tag, count]) =>
+          `<span style="color:#0f0;cursor:pointer" class="tag-link" data-tag="${tag}">${tag}</span> <span style="color:#666">(${count})</span>`
+        ).join('&nbsp;&nbsp; ') +
+        '</p>';
+
+      // Click a tag to search for it
+      div.querySelectorAll('.tag-link').forEach(el => {
+        el.addEventListener('click', () => {
+          document.getElementById('search').value = el.dataset.tag;
+          refresh();
+        });
+      });
+    }
+
+    // --- Main refresh ---
+    async function refresh() {
+      const begin = document.getElementById('begin-date').value;
+      const end = document.getElementById('end-date').value;
+      if (!begin || !end) return;
+
+      localStorage.setItem('feed.begin', begin);
+      localStorage.setItem('feed.end', end);
+
+      const searchQuery = document.getElementById('search').value;
+      const parsed = parseSearch(searchQuery);
+
+      // Tag cloud mode
+      if (parsed.mode === 'tagcloud') {
+        await showTagCloud(begin, end);
+        return;
+      }
+
+      // Build WHERE clause
+      const search = buildSearchClauses(parsed, 3); // $1=begin, $2=end, search starts at $3
+
+      // Default mode: add "no hashtags" filter
+      let noTagFilter = '';
+      if (parsed.mode === 'default') {
+        noTagFilter = " AND feed_content NOT SIMILAR TO '%#[a-zA-Z]%'";
+      }
+
+      // Totals
+      const totalsResult = await db.query(`
+        SELECT COUNT(*) AS n
+        FROM feed
+        WHERE feed_date BETWEEN $1 AND $2
+          ${noTagFilter}
+          ${search.where};
+      `, [begin, end, ...search.params]);
+
+      const cnt = Number(totalsResult.rows[0].n);
+
+      const totalsDiv = document.getElementById('totals');
+      totalsDiv.style.display = 'flex';
+      totalsDiv.innerHTML = `
+        <div class="item"><span class="label">#:</span><span class="value">${cnt}</span></div>
+      `;
+
+      // Entries
+      const div = document.getElementById('output');
+      if (cnt === 0) {
+        div.innerHTML = '<p style="color:#666">No entries in this range.</p>';
+        return;
+      }
+
+      const result = await db.query(`
+        SELECT id, feed_date, feed_content
+        FROM feed
+        WHERE feed_date BETWEEN $1 AND $2
+          ${noTagFilter}
+          ${search.where}
+        ORDER BY feed_date DESC, feed_content ASC;
+      `, [begin, end, ...search.params]);
+
+      const dayNames = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa'];
+
+      let html = '<table><tr><th>Date</th><th>Content</th>';
+      if (isAdmin) html += '<th></th>';
+      html += '</tr>';
+
+      for (const row of result.rows) {
+        const dateStr = new Date(row.feed_date).toISOString().split('T')[0];
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dayName = dayNames[new Date(y, m - 1, d).getDay()];
+        const displayDate = `${m}/${d}/${String(y).slice(-2)}`;
+
+        html += `<tr data-id="${row.id}" data-date="${dateStr}" data-content="${escapeHtml(row.feed_content)}">
+          <td>${displayDate} (${dayName})</td>
+          <td class="content-cell">${renderContent(row.feed_content)}</td>`;
+
+        if (isAdmin) {
+          html += `<td class="actions">
+              <button class="edit" title="Edit">✎</button>
+              <button class="delete" title="Delete">✕</button>
+            </td>`;
+        }
+        html += '</tr>';
+      }
+      html += '</table>';
+      div.innerHTML = html;
+    }
+
+    // --- Row edit/delete (admin only) ---
+    document.getElementById('output').addEventListener('click', async (e) => {
+      if (!isAdmin) return;
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const tr = btn.closest('tr');
+      if (!tr) return;
+      const id = tr.dataset.id;
+
+      if (btn.classList.contains('delete')) {
+        if (!confirm('Delete this entry?')) return;
+        await db.query('DELETE FROM feed WHERE id = $1;', [id]);
+        await refresh();
+        return;
+      }
+
+      if (btn.classList.contains('edit')) {
+        const alreadyEditing = document.querySelector('tr.editing');
+        if (alreadyEditing && alreadyEditing !== tr) {
+          await refresh();
+          const newTr = document.querySelector(`tr[data-id="${id}"]`);
+          if (newTr) newTr.querySelector('.edit').click();
+          return;
+        }
+        tr.classList.add('editing');
+        tr.innerHTML = `
+          <td><input type="date" class="edit-date" value="${tr.dataset.date}"></td>
+          <td><input type="text" class="edit-content" value="${tr.dataset.content}"></td>
+          <td class="actions">
+            <button class="save" title="Save">✓</button>
+            <button class="cancel" title="Cancel">↺</button>
+          </td>
+        `;
+        return;
+      }
+
+      if (btn.classList.contains('save')) {
+        const date = tr.querySelector('.edit-date').value;
+        const content = tr.querySelector('.edit-content').value;
+        try {
+          await db.query(
+            'UPDATE feed SET feed_date = $1, feed_content = $2 WHERE id = $3;',
+            [date, content, id]
+          );
+          await refresh();
+        } catch (err) {
+          alert('Update failed: ' + err.message);
+        }
+        return;
+      }
+
+      if (btn.classList.contains('cancel')) {
+        await refresh();
+        return;
+      }
+    });
+
+    // --- Enter key saves inline edit ---
+    document.getElementById('output').addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter') return;
+      const tr = e.target.closest('tr.editing');
+      if (!tr) return;
+      tr.querySelector('.save').click();
+    });
+
+    // --- Esc key ---
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (document.getElementById('create-form').classList.contains('open')) {
+        hideCreateForm();
+        return;
+      }
+      if (document.querySelector('tr.editing')) {
+        refresh();
+        return;
+      }
+    });
+
+    // --- Create form (admin only) ---
+    const createForm = document.getElementById('create-form');
+    const createToggle = document.getElementById('create-toggle');
+    const createCancel = document.getElementById('create-cancel');
+
+    function showCreateForm() {
+      createForm.classList.add('open');
+      document.getElementById('new-date').value = iso(new Date());
+      document.getElementById('new-content').focus();
+    }
+
+    function hideCreateForm() {
+      createForm.classList.remove('open');
+      createForm.reset();
+    }
+
+    if (createToggle) {
+      createToggle.addEventListener('click', () => {
+        if (createForm.classList.contains('open')) {
+          hideCreateForm();
+        } else {
+          showCreateForm();
+        }
+      });
+    }
+
+    if (createCancel) {
+      createCancel.addEventListener('click', hideCreateForm);
+    }
+
+    createForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const date = document.getElementById('new-date').value;
+      const content = document.getElementById('new-content').value;
+      try {
+        await db.query(
+          'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2);',
+          [date, content]
+        );
+        hideCreateForm();
+        await refresh();
+      } catch (err) {
+        alert('Failed to create entry: ' + err.message);
+      }
+    });
+
+    // --- JSON Save (admin only) ---
+    document.getElementById('save-json')?.addEventListener('click', async () => {
+      const result = await db.query(`
+        SELECT feed_date, feed_content
+        FROM feed
+        ORDER BY feed_date DESC, feed_content ASC;
+      `);
+
+      if (result.rows.length === 0) {
+        alert('No entries to save.');
+        return;
+      }
+
+      const data = result.rows.map(row => ({
+        feed_date: new Date(row.feed_date).toISOString().split('T')[0],
+        feed_content: row.feed_content,
+      }));
+
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'feed.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // --- JSON Open (admin only) ---
+    document.getElementById('open-json')?.addEventListener('click', () => {
+      document.getElementById('json-input').click();
+    });
+    document.getElementById('json-input')?.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      if (!confirm(`You are about to replace all existing content with "${file.name}".\n\nThis cannot be undone. Continue?`)) {
+        e.target.value = '';
+        return;
+      }
+
+      const text = await file.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        alert('Invalid JSON file: ' + err.message);
+        return;
+      }
+
+      if (!Array.isArray(data)) {
+        alert('JSON must be an array of entries.');
+        return;
+      }
+
+      // Wipe and replace
+      const searchInput = document.getElementById('search');
+      const savedSearch = searchInput.value;
+      const savedPlaceholder = searchInput.placeholder;
+      searchInput.disabled = true;
+      searchInput.value = '';
+
+      await db.exec('DELETE FROM feed;');
+
+      const total = data.length;
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        await db.query(
+          'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
+          [row.feed_date, row.feed_content]
+        );
+        if (i % 25 === 0 || i === data.length - 1) {
+          searchInput.placeholder = `Loading ${i + 1} / ${total}...`;
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+
+      searchInput.disabled = false;
+      searchInput.value = savedSearch;
+      searchInput.placeholder = savedPlaceholder;
+
+      alert(`Loaded ${total} entries from ${file.name}.`);
+      await refresh();
+      e.target.value = '';
+    });
+
+    // --- Clear search (doubles as "home" link) ---
+    document.getElementById('clear-search').addEventListener('click', () => {
+      document.getElementById('search').value = '';
+      // Strip ?search= from URL if present
+      if (params.has('search')) {
+        const url = new URL(location);
+        url.searchParams.delete('search');
+        history.replaceState(null, '', url);
+      }
+      refresh();
+    });
+
+    // --- Wire up controls ---
+    document.getElementById('begin-date').addEventListener('change', refresh);
+    document.getElementById('end-date').addEventListener('change', refresh);
+    document.getElementById('search').addEventListener('input', refresh);
+
+    function setRange({ begin, end }) {
+      document.getElementById('begin-date').value = begin;
+      document.getElementById('end-date').value = end;
+      refresh();
+    }
+
+    document.getElementById('this-week').addEventListener('click', () => setRange(getCurrentWeek()));
+    document.getElementById('this-month').addEventListener('click', () => setRange(getCurrentMonth()));
+    document.getElementById('this-year').addEventListener('click', () => setRange(getCurrentYear()));
+    document.getElementById('all-time').addEventListener('click', () => setRange(getAllTime()));
+
+    // --- Pre-fill search from URL parameter ?search=... ---
+    const searchParam = params.get('search');
+    if (searchParam) {
+      document.getElementById('search').value = searchParam;
+    }
+
+    // --- Init: restore saved range or default to all time ---
+    const savedBegin = localStorage.getItem('feed.begin');
+    const savedEnd = localStorage.getItem('feed.end');
+    if (savedBegin && savedEnd) {
+      setRange({ begin: savedBegin, end: savedEnd });
+    } else {
+      setRange(getAllTime());
+    }
+  </script>
+</body>
+</html>

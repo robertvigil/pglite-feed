@@ -1,0 +1,15 @@
+# Local dev server
+serve.py
+
+# Deployment script — contains personal server paths
+deploy.sh
+
+# Other
+linux-commands.json
+
+# Common
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
