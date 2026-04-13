@@ -1,10 +1,12 @@
 # pglite-feed
 
-A browser-only microblog/feed powered by [PGlite](https://pglite.dev/) (PostgreSQL compiled to WebAssembly). One HTML file, no backend, no accounts. Data lives in your browser's IndexedDB.
+A browser-only microblog/feed powered by [PGlite](https://pglite.dev/) (PostgreSQL compiled to WebAssembly). No backend, no accounts. Data lives in your browser's IndexedDB.
+
+<img src="screenshots/mobile.png" alt="Mobile screenshot" width="300">
 
 ## How it works
 
-A single HTML file loaded in your browser. Entries live in the browser's IndexedDB via PGlite. Content is managed locally via `?admin` mode. A `feed.json` file auto-loads as sample content on first visit.
+A static web app loaded in your browser. Entries live in the browser's IndexedDB via PGlite. Content is managed locally via `?admin` mode. A `feed.json` file auto-loads as sample content on first visit.
 
 ## Features
 

@@ -1,0 +1,216 @@
+// CRUD operations — create, edit, delete, JSON open/save
+
+import { escapeHtml } from './render.js';
+
+export function setupCrud(db, isAdmin, refreshFn) {
+  const createForm = document.getElementById('create-form');
+  const createToggle = document.getElementById('create-toggle');
+  const createCancel = document.getElementById('create-cancel');
+  const outputEl = document.getElementById('output');
+
+  // --- Show admin controls ---
+  if (isAdmin) {
+    document.getElementById('action-bar').style.display = 'flex';
+  }
+
+  // --- Create form ---
+  function showCreateForm() {
+    createForm.classList.add('open');
+    document.getElementById('new-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('new-content').focus();
+  }
+
+  function hideCreateForm() {
+    createForm.classList.remove('open');
+    createForm.reset();
+  }
+
+  if (createToggle) {
+    createToggle.addEventListener('click', () => {
+      createForm.classList.contains('open') ? hideCreateForm() : showCreateForm();
+    });
+  }
+
+  if (createCancel) {
+    createCancel.addEventListener('click', hideCreateForm);
+  }
+
+  createForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const date = document.getElementById('new-date').value;
+    const content = document.getElementById('new-content').value;
+    try {
+      await db.query(
+        'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2);',
+        [date, content]
+      );
+      hideCreateForm();
+      await refreshFn();
+    } catch (err) {
+      alert('Failed to create entry: ' + err.message);
+    }
+  });
+
+  // --- Row edit/delete via event delegation ---
+  outputEl.addEventListener('click', async (e) => {
+    if (!isAdmin) return;
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const tr = btn.closest('tr');
+    if (!tr) return;
+    const id = tr.dataset.id;
+
+    if (btn.classList.contains('delete')) {
+      if (!confirm('Delete this entry?')) return;
+      await db.query('DELETE FROM feed WHERE id = $1;', [id]);
+      await refreshFn();
+      return;
+    }
+
+    if (btn.classList.contains('edit')) {
+      const alreadyEditing = document.querySelector('tr.editing');
+      if (alreadyEditing && alreadyEditing !== tr) {
+        await refreshFn();
+        const newTr = document.querySelector(`tr[data-id="${id}"]`);
+        if (newTr) newTr.querySelector('.edit').click();
+        return;
+      }
+      tr.classList.add('editing');
+      tr.innerHTML = `
+        <td><input type="date" class="edit-date" value="${tr.dataset.date}"></td>
+        <td><input type="text" class="edit-content" value="${tr.dataset.content}"></td>
+        <td class="actions">
+          <button class="save" title="Save">✓</button>
+          <button class="cancel" title="Cancel">↺</button>
+        </td>
+      `;
+      return;
+    }
+
+    if (btn.classList.contains('save')) {
+      const date = tr.querySelector('.edit-date').value;
+      const content = tr.querySelector('.edit-content').value;
+      try {
+        await db.query(
+          'UPDATE feed SET feed_date = $1, feed_content = $2 WHERE id = $3;',
+          [date, content, id]
+        );
+        await refreshFn();
+      } catch (err) {
+        alert('Update failed: ' + err.message);
+      }
+      return;
+    }
+
+    if (btn.classList.contains('cancel')) {
+      await refreshFn();
+      return;
+    }
+  });
+
+  // --- Enter key saves inline edit ---
+  outputEl.addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter') return;
+    const tr = e.target.closest('tr.editing');
+    if (!tr) return;
+    tr.querySelector('.save').click();
+  });
+
+  // --- Esc key cancels ---
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (createForm.classList.contains('open')) {
+      hideCreateForm();
+      return;
+    }
+    if (document.querySelector('tr.editing')) {
+      refreshFn();
+      return;
+    }
+  });
+
+  // --- JSON Save ---
+  document.getElementById('save-json')?.addEventListener('click', async () => {
+    const result = await db.query(`
+      SELECT feed_date, feed_content
+      FROM feed
+      ORDER BY feed_date DESC, feed_content ASC;
+    `);
+
+    if (result.rows.length === 0) {
+      alert('No entries to save.');
+      return;
+    }
+
+    const data = result.rows.map(row => ({
+      feed_date: new Date(row.feed_date).toISOString().split('T')[0],
+      feed_content: row.feed_content,
+    }));
+
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'feed.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // --- JSON Open ---
+  document.getElementById('open-json')?.addEventListener('click', () => {
+    document.getElementById('json-input').click();
+  });
+  document.getElementById('json-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!confirm(`You are about to replace all existing content with "${file.name}".\n\nThis cannot be undone. Continue?`)) {
+      e.target.value = '';
+      return;
+    }
+
+    const text = await file.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      alert('Invalid JSON file: ' + err.message);
+      return;
+    }
+
+    if (!Array.isArray(data)) {
+      alert('JSON must be an array of entries.');
+      return;
+    }
+
+    const searchInput = document.getElementById('search');
+    const savedSearch = searchInput.value;
+    const savedPlaceholder = searchInput.placeholder;
+    searchInput.disabled = true;
+    searchInput.value = '';
+
+    await db.exec('DELETE FROM feed;');
+
+    const total = data.length;
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      await db.query(
+        'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
+        [row.feed_date, row.feed_content]
+      );
+      if (i % 25 === 0 || i === data.length - 1) {
+        searchInput.placeholder = `Loading ${i + 1} / ${total}...`;
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    searchInput.disabled = false;
+    searchInput.value = savedSearch;
+    searchInput.placeholder = savedPlaceholder;
+
+    alert(`Loaded ${total} entries from ${file.name}.`);
+    await refreshFn();
+    e.target.value = '';
+  });
+}

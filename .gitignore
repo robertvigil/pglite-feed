@@ -4,6 +4,9 @@ serve.py
 # Deployment script — contains personal server paths
 deploy.sh
 
+# Domain owner's content (not part of repo — each deployer maintains their own)
+content.json
+
 # Other
 linux-commands.json
 
