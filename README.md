@@ -10,7 +10,7 @@ A static web app loaded in your browser. Entries live in the browser's IndexedDB
 
 ## Features
 
-- **Date range filtering** — always-active `from → to` range with quick buttons (Wk / Mo / Yr / ∞). Range persists in localStorage.
+- **Date filtering** — use `after:2026-04-01` and `before:2026-04-14` in the search bar for date ranges.
 - **Search** — multi-word AND with exclusion: `"pglite feed"` matches both terms, `"-exclude"` filters out a term.
 - **Hashtag categories** — use `#tags` in content for categories (e.g., `#links`, `#notes`), then search for `#tag` to filter.
 - **Smart default view** — empty search shows only entries without hashtags. Tagged reference data (like cheat sheets) stays hidden until you search for it.
@@ -43,16 +43,23 @@ A static web app loaded in your browser. Entries live in the browser's IndexedDB
 | `git #` | Strip the lone `#`, treat as just `git` |
 | `chmod #permissions` | Normal AND search — entries with both |
 | `-#git` | Normal exclude — entries NOT containing "#git" |
+| `after:2026-04-01` | Entries on or after this date |
+| `before:2026-04-14` | Entries on or before this date |
+| `after:2026-04-01 before:2026-04-14 #git` | Date range + tag search combined |
 
 ### Linkable searches
 
 Content can include clickable links that trigger searches using URL-encoded `?search=` parameters:
 
 ```
-[files](?search=%23files)        → searches for #files
-[chmod](?search=chmod)            → searches for chmod
-[ssh tunnel](?search=ssh%20-L)   → searches for ssh -L
+[files](?search=%23files)                          → searches for #files
+[chmod](?search=chmod)                              → searches for chmod
+[ssh tunnel](?search=ssh%20-L)                     → searches for ssh -L
+[april entries](?search=after%3A2026-04-01)        → searches for after:2026-04-01
+[april git](?search=after%3A2026-04-01%20%23git)   → searches for after:2026-04-01 #git
 ```
+
+These URLs can be shared directly — the recipient loads the app with the search pre-filled.
 
 This lets non-tagged "index" entries link to tagged content without being hidden by the default view filter.
 

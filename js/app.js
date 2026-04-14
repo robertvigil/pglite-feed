@@ -1,7 +1,6 @@
 // Main app — PGlite init, refresh loop, event wiring
 
 import { PGlite } from 'https://cdn.jsdelivr.net/npm/@electric-sql/pglite/dist/index.js';
-import { iso, getCurrentWeek, getCurrentMonth, getCurrentYear, getAllTime } from './dates.js';
 import { escapeHtml, renderContent } from './render.js';
 import { parseSearch, buildSearchClauses, showTagCloud } from './search.js';
 import { setupCrud } from './crud.js';
@@ -30,7 +29,6 @@ await db.exec(`
 try {
   const headResp = await fetch('content.json', { method: 'HEAD' });
   if (headResp.ok) {
-    // content.json exists — check freshness
     const serverModified = headResp.headers.get('Last-Modified') || '';
     const localResult = await db.query("SELECT value FROM config WHERE key = 'content_loaded'");
     const localModified = localResult.rows[0]?.value || '';
@@ -40,7 +38,6 @@ try {
       const resp = await fetch('content.json');
       const data = await resp.json();
 
-      // Full replace — wipe and reload
       await db.exec('DELETE FROM feed;');
       for (const row of data) {
         await db.query(
@@ -49,14 +46,12 @@ try {
         );
       }
 
-      // Store timestamp
       await db.query(
         "INSERT INTO config (key, value) VALUES ('content_loaded', $1) ON CONFLICT (key) DO UPDATE SET value = $1;",
         [serverModified]
       );
     }
   } else {
-    // No content.json — fall back to feed.json (one-time, no tracking)
     const count = await db.query('SELECT COUNT(*) AS n FROM feed;');
     if (count.rows[0].n === 0n || count.rows[0].n === 0) {
       document.getElementById('output').textContent = 'Loading...';
@@ -78,13 +73,6 @@ try {
 
 // --- Main refresh ---
 async function refresh() {
-  const begin = document.getElementById('begin-date').value;
-  const end = document.getElementById('end-date').value;
-  if (!begin || !end) return;
-
-  localStorage.setItem('feed.begin', begin);
-  localStorage.setItem('feed.end', end);
-
   const searchQuery = document.getElementById('search').value;
   const parsed = parseSearch(searchQuery);
 
@@ -94,12 +82,12 @@ async function refresh() {
 
   // Tag cloud mode
   if (parsed.mode === 'tagcloud') {
-    await showTagCloud(db, begin, end, outputEl, totalsEl, searchEl);
+    await showTagCloud(db, outputEl, totalsEl, searchEl, parsed.after, parsed.before);
     return;
   }
 
-  // Build WHERE clause
-  const search = buildSearchClauses(parsed, 3);
+  // Build WHERE clause — starts at $1 (no fixed date params anymore)
+  const search = buildSearchClauses(parsed, 1);
 
   // Default mode: hide entries with hashtags
   let noTagFilter = '';
@@ -111,10 +99,10 @@ async function refresh() {
   const totalsResult = await db.query(`
     SELECT COUNT(*) AS n
     FROM feed
-    WHERE feed_date BETWEEN $1 AND $2
+    WHERE 1=1
       ${noTagFilter}
       ${search.where};
-  `, [begin, end, ...search.params]);
+  `, [...search.params]);
 
   const cnt = Number(totalsResult.rows[0].n);
 
@@ -124,18 +112,18 @@ async function refresh() {
   `;
 
   if (cnt === 0) {
-    outputEl.innerHTML = '<p style="color:#666">No entries in this range.</p>';
+    outputEl.innerHTML = '<p style="color:#666">No entries found.</p>';
     return;
   }
 
   const result = await db.query(`
     SELECT id, feed_date, feed_content
     FROM feed
-    WHERE feed_date BETWEEN $1 AND $2
+    WHERE 1=1
       ${noTagFilter}
       ${search.where}
     ORDER BY feed_date DESC, feed_content ASC;
-  `, [begin, end, ...search.params]);
+  `, [...search.params]);
 
   const dayNames = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa'];
 
@@ -187,7 +175,6 @@ document.addEventListener('click', async (e) => {
     }
     const md = await resp.text();
 
-    // Load marked.js from CDN if not already loaded
     if (!window.marked) {
       await import('https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js').then(m => {
         window.marked = m.marked;
@@ -196,9 +183,10 @@ document.addEventListener('click', async (e) => {
 
     const html = window.marked(md);
     outputEl.innerHTML = `
-      <div class="md-back"></div>
+      <span class="md-back" id="md-back">← back</span>
       <div class="md-view">${html}</div>
     `;
+    document.getElementById('md-back').addEventListener('click', () => refresh());
   } catch (err) {
     outputEl.innerHTML = `<p style="color:#f66">Error: ${err.message}</p>`;
   }
@@ -217,21 +205,8 @@ function goHome() {
 document.getElementById('clear-search').addEventListener('click', goHome);
 document.getElementById('home-link').addEventListener('click', goHome);
 
-// --- Wire up controls ---
-document.getElementById('begin-date').addEventListener('change', refresh);
-document.getElementById('end-date').addEventListener('change', refresh);
+// --- Wire up search ---
 document.getElementById('search').addEventListener('input', refresh);
-
-function setRange({ begin, end }) {
-  document.getElementById('begin-date').value = begin;
-  document.getElementById('end-date').value = end;
-  refresh();
-}
-
-document.getElementById('this-week').addEventListener('click', () => setRange(getCurrentWeek()));
-document.getElementById('this-month').addEventListener('click', () => setRange(getCurrentMonth()));
-document.getElementById('this-year').addEventListener('click', () => setRange(getCurrentYear()));
-document.getElementById('all-time').addEventListener('click', () => setRange(getAllTime()));
 
 // --- Pre-fill search from URL parameter ?search=... ---
 const searchParam = params.get('search');
@@ -239,11 +214,5 @@ if (searchParam) {
   document.getElementById('search').value = searchParam;
 }
 
-// --- Init: restore saved range or default to all time ---
-const savedBegin = localStorage.getItem('feed.begin');
-const savedEnd = localStorage.getItem('feed.end');
-if (savedBegin && savedEnd) {
-  setRange({ begin: savedBegin, end: savedEnd });
-} else {
-  setRange(getAllTime());
-}
+// --- Init ---
+refresh();

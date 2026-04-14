@@ -9,19 +9,8 @@
 <body>
   <h1><span id="home-link" style="cursor:pointer">[feed]</span></h1>
 
-  <div class="controls">
-    <input type="date" id="begin-date">
-    <label>→</label>
-    <input type="date" id="end-date">
-    <button id="this-week">Wk</button>
-    <button id="this-month">Mo</button>
-    <button id="this-year">Yr</button>
-    <button id="all-time" title="All time">∞</button>
-    <a href="https://github.com/robertvigil/pglite-feed" target="_blank" rel="noopener" title="Help / docs" class="help-link">?</a>
-  </div>
-
   <div class="search-bar">
-    <input type="text" id="search" placeholder='Search — "keyword" (AND), "-exclude", "#tag", "#" for tag cloud' autocomplete="off">
+    <input type="text" id="search" placeholder='Search — "keyword", "-exclude", "#tag", "#" tag cloud, "after:" "before:" dates' autocomplete="off">
     <span id="clear-search" title="Clear search">&times;</span>
   </div>
 
@@ -30,6 +19,7 @@
     <button id="save-json" title="Save JSON">↓</button>
     <button id="open-json" title="Open JSON">↑</button>
     <input type="file" id="json-input" accept=".json" style="display:none">
+    <button id="exit-admin" title="Exit admin mode">↺</button>
   </div>
   <form class="create-form" id="create-form">
     <textarea id="new-content" class="content-input" rows="2" placeholder="content (use #tags for categories)" required></textarea>

@@ -1,38 +1,67 @@
 // Search parsing, clause building, and tag cloud
 
-// Parses search input into a mode + terms:
+// Parses search input into mode + terms + date filters:
 //   empty       → mode: 'default' (show non-tagged entries only)
 //   "#"         → mode: 'tagcloud' (show tag cloud with counts)
 //   "#git"      → mode: 'search', terms parsed normally
 //   "chmod"     → mode: 'search', terms parsed normally
-//   "git #"     → mode: 'search', lone "#" stripped, treated as "git"
+//   "git #"     → mode: 'search', lone "#" stripped
+//   "after:2026-04-01"           → date filter
+//   "after:2026-04-01 before:2026-04-14 #git"  → date range + tag search
 export function parseSearch(query) {
   const raw = query.trim();
 
-  if (!raw) return { mode: 'default', include: [], exclude: [] };
-  if (raw === '#') return { mode: 'tagcloud', include: [], exclude: [] };
+  if (!raw) return { mode: 'default', include: [], exclude: [], after: null, before: null };
+  if (raw === '#') return { mode: 'tagcloud', include: [], exclude: [], after: null, before: null };
 
-  // Strip single-character tokens (too broad to be useful)
-  const terms = raw.split(/\s+/).filter(t => t && t.length > 1);
+  // Strip single-character tokens
+  const tokens = raw.split(/\s+/).filter(t => t && t.length > 1);
 
-  if (terms.length === 0) return { mode: 'default', include: [], exclude: [] };
+  if (tokens.length === 0) return { mode: 'default', include: [], exclude: [], after: null, before: null };
 
   const include = [];
   const exclude = [];
-  for (const t of terms) {
-    if (t.startsWith('-') && t.length > 1) {
+  let after = null;
+  let before = null;
+
+  for (const t of tokens) {
+    if (t.startsWith('after:') && t.length > 6) {
+      after = t.substring(6);
+    } else if (t.startsWith('before:') && t.length > 7) {
+      before = t.substring(7);
+    } else if (t.startsWith('-') && t.length > 1) {
       exclude.push(t.substring(1));
     } else {
       include.push(t);
     }
   }
-  return { mode: 'search', include, exclude };
+
+  // If only date terms and no text terms, still show all entries (not just non-tagged)
+  const hasTextTerms = include.length > 0 || exclude.length > 0;
+  const hasDateTerms = after !== null || before !== null;
+  const mode = (hasTextTerms || hasDateTerms) ? 'search' : 'default';
+
+  return { mode, include, exclude, after, before };
 }
 
-export function buildSearchClauses({ include, exclude }, startIdx) {
+export function buildSearchClauses({ include, exclude, after, before }, startIdx) {
   const clauses = [];
   const params = [];
   let i = startIdx;
+
+  // Date filters
+  if (after) {
+    clauses.push(`feed_date >= $${i}::date`);
+    params.push(after);
+    i++;
+  }
+  if (before) {
+    clauses.push(`feed_date <= $${i}::date`);
+    params.push(before);
+    i++;
+  }
+
+  // Text filters
   for (const term of include) {
     clauses.push(`feed_content ILIKE $${i}`);
     params.push(`%${term}%`);
@@ -43,18 +72,28 @@ export function buildSearchClauses({ include, exclude }, startIdx) {
     params.push(`%${term}%`);
     i++;
   }
+
   return {
     where: clauses.length ? ' AND ' + clauses.join(' AND ') : '',
     params,
   };
 }
 
-export async function showTagCloud(db, begin, end, outputEl, totalsEl, searchEl) {
+export async function showTagCloud(db, outputEl, totalsEl, searchEl, after, before) {
+  // Build optional date filter for tag cloud
+  let dateWhere = '';
+  const dateParams = [];
+  if (after) { dateWhere += ' AND feed_date >= $1::date'; dateParams.push(after); }
+  if (before) {
+    dateWhere += ` AND feed_date <= $${dateParams.length + 1}::date`;
+    dateParams.push(before);
+  }
+
   const result = await db.query(`
     SELECT feed_content
     FROM feed
-    WHERE feed_date BETWEEN $1 AND $2;
-  `, [begin, end]);
+    WHERE 1=1 ${dateWhere};
+  `, dateParams);
 
   const tagCounts = {};
   for (const row of result.rows) {
@@ -85,7 +124,6 @@ export async function showTagCloud(db, begin, end, outputEl, totalsEl, searchEl)
     ).join('&nbsp;&nbsp; ') +
     '</p>';
 
-  // Click a tag to search for it
   outputEl.querySelectorAll('.tag-link').forEach(el => {
     el.addEventListener('click', () => {
       searchEl.value = el.dataset.tag;

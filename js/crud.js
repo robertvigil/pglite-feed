@@ -138,6 +138,13 @@ export function setupCrud(db, isAdmin, refreshFn) {
     }
   });
 
+  // --- Exit admin mode ---
+  document.getElementById('exit-admin')?.addEventListener('click', () => {
+    const url = new URL(location);
+    url.searchParams.delete('admin');
+    location.href = url;
+  });
+
   // --- JSON Save ---
   document.getElementById('save-json')?.addEventListener('click', async () => {
     const result = await db.query(`
