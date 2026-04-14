@@ -2,7 +2,7 @@
 
 A browser-only microblog/feed powered by [PGlite](https://pglite.dev/) (PostgreSQL compiled to WebAssembly). No backend, no accounts. Data lives in your browser's IndexedDB.
 
-<img src="screenshots/mobile.png" alt="Mobile screenshot" width="300">
+<img src="screenshots/mobile.jpg" alt="Mobile screenshot" width="300">
 
 ## How it works
 
