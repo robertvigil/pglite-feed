@@ -139,7 +139,7 @@ async function refresh() {
 
   const dayNames = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa'];
 
-  let html = '<table><tr><th>Date</th><th>Content</th>';
+  let html = '<table><tr><th>Content</th><th>Date</th>';
   if (isAdmin) html += '<th></th>';
   html += '</tr>';
 
@@ -150,8 +150,8 @@ async function refresh() {
     const displayDate = `${m}/${d}/${String(y).slice(-2)}`;
 
     html += `<tr data-id="${row.id}" data-date="${dateStr}" data-content="${escapeHtml(row.feed_content)}">
-      <td>${displayDate} (${dayName})</td>
-      <td class="content-cell">${renderContent(row.feed_content)}</td>`;
+      <td class="content-cell">${renderContent(row.feed_content)}</td>
+      <td>${displayDate} (${dayName})</td>`;
 
     if (isAdmin) {
       html += `<td class="actions">

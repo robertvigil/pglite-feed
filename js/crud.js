@@ -35,6 +35,14 @@ export function setupCrud(db, isAdmin, refreshFn) {
     createCancel.addEventListener('click', hideCreateForm);
   }
 
+  // --- Ctrl+Enter submits create form ---
+  createForm.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.shiftKey)) {
+      e.preventDefault();
+      createForm.requestSubmit();
+    }
+  });
+
   createForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const date = document.getElementById('new-date').value;
@@ -77,9 +85,9 @@ export function setupCrud(db, isAdmin, refreshFn) {
       }
       tr.classList.add('editing');
       tr.innerHTML = `
-        <td><input type="date" class="edit-date" value="${tr.dataset.date}"></td>
-        <td><input type="text" class="edit-content" value="${tr.dataset.content}"></td>
-        <td class="actions">
+        <td class="edit-row-1"><textarea class="edit-content" rows="2">${tr.dataset.content}</textarea></td>
+        <td class="edit-row-2">
+          <input type="date" class="edit-date" value="${tr.dataset.date}">
           <button class="save" title="Save">✓</button>
           <button class="cancel" title="Cancel">↺</button>
         </td>
@@ -108,11 +116,12 @@ export function setupCrud(db, isAdmin, refreshFn) {
     }
   });
 
-  // --- Enter key saves inline edit ---
+  // --- Ctrl+Enter or Shift+Enter saves inline edit (Enter alone adds newline in textarea) ---
   outputEl.addEventListener('keydown', async (e) => {
-    if (e.key !== 'Enter') return;
+    if (e.key !== 'Enter' || (!e.ctrlKey && !e.shiftKey)) return;
     const tr = e.target.closest('tr.editing');
     if (!tr) return;
+    e.preventDefault();
     tr.querySelector('.save').click();
   });
 

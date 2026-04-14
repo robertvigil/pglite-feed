@@ -43,7 +43,7 @@ h1 { color: #0f0; margin: 0 0 8px; font-size: 1.2em; }
 }
 #clear-search:hover { color: #f66; }
 
-/* Results table */
+/* Results table — desktop grid (commented out, using card layout instead)
 table {
   width: 100%; border-collapse: collapse;
   background: #1a1a1a; font-size: 0.9em;
@@ -52,6 +52,23 @@ th, td { border: 1px solid #333; padding: 5px 10px; text-align: left; }
 th { background: #222; color: #0f0; }
 th:first-child, td:first-child { white-space: nowrap; }
 tr:hover { background: #222; }
+*/
+
+/* Results — card layout (used for both mobile and desktop) */
+table, tbody, tr, td { display: block; width: 100%; }
+table { background: none; }
+table tr:first-child th { display: none; }
+table tr:has(th) { display: none; }
+tr {
+  border: 1px solid #333; border-radius: 4px;
+  padding: 6px 8px; margin-bottom: 6px;
+  background: #1a1a1a;
+}
+tr:hover { background: #222; }
+td { border: none; padding: 1px 0; }
+td.content-cell { display: inline; }
+td:nth-child(2) { display: inline-block; width: auto; padding-left: 10px; font-size: 0.85em; color: #888; }
+td.actions { display: inline; padding-left: 10px; }
 td a { color: #0f0; }
 .tag-link:hover { text-decoration: underline; }
 
@@ -78,7 +95,7 @@ td a { color: #0f0; }
 }
 .action-bar button:hover { color: #0f0; }
 .create-form {
-  display: none; flex-wrap: wrap; gap: 8px; align-items: center;
+  display: none; flex-direction: column; gap: 8px;
   margin-bottom: 15px; padding: 10px;
   background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
 }
@@ -88,8 +105,13 @@ td a { color: #0f0; }
   background: #222; color: #0f0; border: 1px solid #0f0;
   border-radius: 3px; font-family: inherit;
 }
+.create-form .content-input {
+  width: 100%; padding: 6px 8px; font-size: 14px;
+  background: #222; color: #0f0; border: 1px solid #0f0;
+  border-radius: 3px; font-family: inherit; resize: vertical;
+}
+.create-form .form-row { display: flex; gap: 8px; align-items: center; }
 .create-form input[type="date"] { width: 150px; }
-.create-form input.content-input { flex: 1; min-width: 250px; }
 .create-form .actions { display: flex; gap: 2px; }
 .create-form button {
   padding: 2px 8px; font-size: 22px;
@@ -98,6 +120,25 @@ td a { color: #0f0; }
 }
 .create-form button[type="submit"]:hover { color: #0f0; }
 .create-form button.cancel:hover { color: #f66; }
+
+/* Inline edit — two-row layout */
+tr.editing { padding: 10px 8px; }
+tr.editing .edit-row-1 { width: 100%; margin-bottom: 6px; }
+tr.editing .edit-row-1 textarea {
+  width: 100%; padding: 3px 5px; font-size: 0.85em;
+  background: #222; color: #0f0; border: 1px solid #0f0;
+  border-radius: 2px; font-family: inherit; resize: vertical;
+}
+tr.editing .edit-row-2 { display: flex; gap: 8px; align-items: center; padding-left: 0; margin-left: 0; }
+tr.editing .edit-row-2 input[type="date"] { margin-left: 0; }
+tr.editing .edit-row-2 button {
+  padding: 2px 6px; font-size: 18px;
+  background: transparent; color: #666; border: none;
+  cursor: pointer; font-family: inherit; line-height: 1;
+}
+tr.editing .edit-row-2 button.save { color: #0f0; font-weight: bold; }
+tr.editing .edit-row-2 button.save:hover { color: #0f0; }
+tr.editing .edit-row-2 button.cancel:hover { color: #f66; }
 
 /* Row action buttons */
 td.actions { white-space: nowrap; text-align: right; width: 1px; }
@@ -174,7 +215,7 @@ tr.editing td input[type="date"] { width: auto; }
 .md-view { padding-top: 0; }
 .md-back:hover { color: #0f0; }
 
-/* Mobile */
+/* Mobile — no longer needed, card layout is now the default
 @media (max-width: 600px) {
   table, tbody, tr, td { display: block; width: 100%; }
   table tr:first-child th { display: none; }
@@ -188,3 +229,4 @@ tr.editing td input[type="date"] { width: auto; }
   td.content-cell { display: inline; }
   td.actions { display: inline; padding-left: 10px; }
 }
+*/

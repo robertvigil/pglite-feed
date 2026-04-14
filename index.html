@@ -32,11 +32,13 @@
     <input type="file" id="json-input" accept=".json" style="display:none">
   </div>
   <form class="create-form" id="create-form">
-    <input type="date" id="new-date" required>
-    <input type="text" id="new-content" class="content-input" placeholder="content (use #tags for categories)" required>
-    <div class="actions">
-      <button type="submit" title="Save">✓</button>
-      <button type="button" class="cancel" id="create-cancel" title="Cancel">↺</button>
+    <textarea id="new-content" class="content-input" rows="2" placeholder="content (use #tags for categories)" required></textarea>
+    <div class="form-row">
+      <input type="date" id="new-date" required>
+      <div class="actions">
+        <button type="submit" title="Save">✓</button>
+        <button type="button" class="cancel" id="create-cancel" title="Cancel">↺</button>
+      </div>
     </div>
   </form>
 
