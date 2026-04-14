@@ -32,21 +32,21 @@ th:first-child, td:first-child { white-space: nowrap; }
 tr:hover { background: #222; }
 */
 
-/* Results — card layout (used for both mobile and desktop) */
-table, tbody, tr, td { display: block; width: 100%; }
-table { background: none; }
-table tr:first-child th { display: none; }
-table tr:has(th) { display: none; }
-tr {
+/* Results — card layout, scoped to #output to avoid affecting .md-view tables */
+#output > table, #output > table tbody, #output > table tr, #output > table td { display: block; width: 100%; }
+#output > table { background: none; }
+#output > table tr:first-child th { display: none; }
+#output > table tr:has(th) { display: none; }
+#output > table tr {
   border: 1px solid #333; border-radius: 4px;
   padding: 6px 8px; margin-bottom: 6px;
   background: #1a1a1a;
 }
-tr:hover { background: #222; }
-td { border: none; padding: 1px 0; }
-td.content-cell { display: inline; }
-td:nth-child(2) { display: inline-block; width: auto; padding-left: 10px; font-size: 0.85em; color: #888; }
-td.actions { display: inline; padding-left: 10px; }
+#output > table tr:hover { background: #222; }
+#output > table td { border: none; padding: 1px 0; }
+#output > table td.content-cell { display: inline; }
+#output > table td:nth-child(2) { display: inline-block; width: auto; padding-left: 10px; font-size: 0.85em; color: #888; }
+#output > table td.actions { display: inline; padding-left: 10px; }
 td a { color: #0f0; }
 .tag-link:hover { text-decoration: underline; }
 
