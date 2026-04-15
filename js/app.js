@@ -34,15 +34,27 @@ try {
     const localModified = localResult.rows[0]?.value || '';
 
     if (serverModified !== localModified) {
-      document.getElementById('output').textContent = 'Loading...';
+      document.getElementById('output').textContent = localModified ? 'Refreshing content...' : 'Loading content...';
       const resp = await fetch('content.json');
-      const data = await resp.json();
+      const raw = await resp.json();
+
+      // Support both formats: flat array (old) or {config, entries} object (new)
+      const entries = Array.isArray(raw) ? raw : (raw.entries || []);
+      const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
 
       await db.exec('DELETE FROM feed;');
-      for (const row of data) {
+      for (const row of entries) {
         await db.query(
           'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
           [row.feed_date, row.feed_content]
+        );
+      }
+
+      // Apply config from JSON
+      if (jsonConfig.site_title) {
+        await db.query(
+          "INSERT INTO config (key, value) VALUES ('site_title', $1) ON CONFLICT (key) DO UPDATE SET value = $1;",
+          [jsonConfig.site_title]
         );
       }
 
@@ -50,6 +62,8 @@ try {
         "INSERT INTO config (key, value) VALUES ('content_loaded', $1) ON CONFLICT (key) DO UPDATE SET value = $1;",
         [serverModified]
       );
+      await loadTitle();
+      showLastUpdated();
     }
   } else {
     const count = await db.query('SELECT COUNT(*) AS n FROM feed;');
@@ -57,18 +71,71 @@ try {
       document.getElementById('output').textContent = 'Loading...';
       const resp = await fetch('feed.json');
       if (resp.ok) {
-        const data = await resp.json();
-        for (const row of data) {
+        const raw = await resp.json();
+        const entries = Array.isArray(raw) ? raw : (raw.entries || []);
+        const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
+        for (const row of entries) {
           await db.query(
             'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
             [row.feed_date, row.feed_content]
           );
+        }
+        if (jsonConfig.site_title) {
+          await db.query(
+            "INSERT INTO config (key, value) VALUES ('site_title', $1) ON CONFLICT (key) DO UPDATE SET value = $1;",
+            [jsonConfig.site_title]
+          );
+          await loadTitle();
         }
       }
     }
   }
 } catch (e) {
   // fetch failed — use whatever's in the DB
+}
+
+// --- Site title from config ---
+async function loadTitle() {
+  const result = await db.query("SELECT value FROM config WHERE key = 'site_title'");
+  const title = result.rows[0]?.value || 'feed';
+  document.getElementById('home-link').textContent = `[${title}]`;
+}
+
+// --- Search bar commands (! prefix, admin only) ---
+async function handleCommand(input) {
+  const raw = input.trim();
+  if (!raw.startsWith('!')) return false;
+  if (!isAdmin) return false;
+
+  const parts = raw.substring(1).split(/\s+/);
+  const cmd = parts[0]?.toLowerCase();
+
+  if (cmd === 'title') {
+    const newTitle = parts.slice(1).join(' ');
+    if (newTitle) {
+      await db.query(
+        "INSERT INTO config (key, value) VALUES ('site_title', $1) ON CONFLICT (key) DO UPDATE SET value = $1;",
+        [newTitle]
+      );
+    } else {
+      await db.query("DELETE FROM config WHERE key = 'site_title';");
+    }
+    await loadTitle();
+    document.getElementById('search').value = '';
+    return true;
+  }
+
+  return false;
+}
+
+// --- Show last updated timestamp ---
+async function showLastUpdated() {
+  const result = await db.query("SELECT value FROM config WHERE key = 'content_loaded'");
+  const el = document.getElementById('last-updated');
+  if (result.rows[0]?.value) {
+    const d = new Date(result.rows[0].value);
+    el.textContent = `updated ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`;
+  }
 }
 
 // --- Main refresh ---
@@ -205,8 +272,23 @@ function goHome() {
 document.getElementById('clear-search').addEventListener('click', goHome);
 document.getElementById('home-link').addEventListener('click', goHome);
 
-// --- Wire up search ---
-document.getElementById('search').addEventListener('input', refresh);
+// --- Wire up search (with command interception) ---
+document.getElementById('search').addEventListener('input', async (e) => {
+  const val = e.target.value.trim();
+  // Don't search while typing a command
+  if (val.startsWith('!')) return;
+  refresh();
+});
+
+// Enter key executes commands
+document.getElementById('search').addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter') return;
+  const val = e.target.value.trim();
+  if (val.startsWith('!')) {
+    e.preventDefault();
+    await handleCommand(val);
+  }
+});
 
 // --- Pre-fill search from URL parameter ?search=... ---
 const searchParam = params.get('search');
@@ -215,4 +297,6 @@ if (searchParam) {
 }
 
 // --- Init ---
+loadTitle();
+showLastUpdated();
 refresh();

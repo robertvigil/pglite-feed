@@ -44,7 +44,7 @@ tr:hover { background: #222; }
 }
 #output > table tr:hover { background: #222; }
 #output > table td { border: none; padding: 1px 0; }
-#output > table td.content-cell { display: inline; }
+#output > table td.content-cell { display: inline; white-space: pre-wrap; }
 #output > table td:nth-child(2) { display: inline-block; width: auto; padding-left: 10px; font-size: 0.85em; color: #888; }
 #output > table td.actions { display: inline; padding-left: 10px; }
 td a { color: #0f0; }

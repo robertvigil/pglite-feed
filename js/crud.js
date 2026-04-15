@@ -145,7 +145,7 @@ export function setupCrud(db, isAdmin, refreshFn) {
     location.href = url;
   });
 
-  // --- JSON Save ---
+  // --- JSON Save (exports config + entries) ---
   document.getElementById('save-json')?.addEventListener('click', async () => {
     const result = await db.query(`
       SELECT feed_date, feed_content
@@ -158,12 +158,26 @@ export function setupCrud(db, isAdmin, refreshFn) {
       return;
     }
 
-    const data = result.rows.map(row => ({
+    const entries = result.rows.map(row => ({
       feed_date: new Date(row.feed_date).toISOString().split('T')[0],
       feed_content: row.feed_content,
     }));
 
-    const json = JSON.stringify(data, null, 2);
+    // Build config from config table
+    const configResult = await db.query(
+      "SELECT key, value FROM config WHERE key NOT IN ('content_loaded')"
+    );
+    const config = {};
+    for (const row of configResult.rows) {
+      config[row.key] = row.value;
+    }
+
+    // Export as object if config exists, flat array if not (backward compatible)
+    const output = Object.keys(config).length > 0
+      ? { config, entries }
+      : entries;
+
+    const json = JSON.stringify(output, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -187,16 +201,20 @@ export function setupCrud(db, isAdmin, refreshFn) {
     }
 
     const text = await file.text();
-    let data;
+    let raw;
     try {
-      data = JSON.parse(text);
+      raw = JSON.parse(text);
     } catch (err) {
       alert('Invalid JSON file: ' + err.message);
       return;
     }
 
-    if (!Array.isArray(data)) {
-      alert('JSON must be an array of entries.');
+    // Support both formats: flat array (old) or {config, entries} object (new)
+    const entries = Array.isArray(raw) ? raw : (raw.entries || []);
+    const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
+
+    if (!Array.isArray(entries)) {
+      alert('JSON must be an array of entries or {config, entries} object.');
       return;
     }
 
@@ -208,17 +226,25 @@ export function setupCrud(db, isAdmin, refreshFn) {
 
     await db.exec('DELETE FROM feed;');
 
-    const total = data.length;
-    for (let i = 0; i < data.length; i++) {
-      const row = data[i];
+    const total = entries.length;
+    for (let i = 0; i < entries.length; i++) {
+      const row = entries[i];
       await db.query(
         'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
         [row.feed_date, row.feed_content]
       );
-      if (i % 25 === 0 || i === data.length - 1) {
+      if (i % 25 === 0 || i === entries.length - 1) {
         searchInput.placeholder = `Loading ${i + 1} / ${total}...`;
         await new Promise(r => setTimeout(r, 0));
       }
+    }
+
+    // Apply config from JSON
+    for (const [key, value] of Object.entries(jsonConfig)) {
+      await db.query(
+        "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
+        [key, value]
+      );
     }
 
     searchInput.disabled = false;
@@ -226,6 +252,11 @@ export function setupCrud(db, isAdmin, refreshFn) {
     searchInput.placeholder = savedPlaceholder;
 
     alert(`Loaded ${total} entries from ${file.name}.`);
+    // Reload title in case it changed
+    if (jsonConfig.site_title !== undefined) {
+      const titleEl = document.getElementById('home-link');
+      titleEl.textContent = `[${jsonConfig.site_title || 'feed'}]`;
+    }
     await refreshFn();
     e.target.value = '';
   });

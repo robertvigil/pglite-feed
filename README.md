@@ -18,6 +18,7 @@ A static web app loaded in your browser. Entries live in the browser's IndexedDB
 - **Search via URL** — `?search=%23git` pre-fills the search bar. Enables clickable links in content that trigger searches.
 - **Clear button (×)** — clears the search and returns to the default view. Acts as a "home" button.
 - **Admin mode (`?admin`)** — add `?admin` to the URL for full CRUD.
+- **Configurable title** — type `!title My Site` in the search bar (admin mode) to customize the `[feed]` header. Included in JSON exports.
 - **Markdown-style links** — `[display text](url)` in content becomes a clickable link. Bare URLs are also auto-linked.
 - **JSON Save/Open** — save all entries to a JSON file, open a file to replace all content (traditional file metaphor, not merge).
 - **Auto-load on empty DB** — first visit loads `feed.json` (sample/help content). After that, you manage everything via admin mode.
@@ -103,12 +104,25 @@ This matches the traditional "Open File" / "Save File" mental model.
 
 ### feed.json format
 
+Flat array (simple):
 ```json
 [
   {"feed_date": "2026-04-12", "feed_content": "Hello world"},
   {"feed_date": "2026-04-12", "feed_content": "A note about links #links"}
 ]
 ```
+
+Object with config (includes site title and other settings):
+```json
+{
+  "config": {"site_title": "my site"},
+  "entries": [
+    {"feed_date": "2026-04-12", "feed_content": "Hello world"}
+  ]
+}
+```
+
+Both formats are supported on import. Export uses the object format when config exists.
 
 ## Content formatting
 
