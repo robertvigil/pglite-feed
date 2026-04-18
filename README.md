@@ -19,12 +19,13 @@ A static web app loaded in your browser. Entries live in the browser's IndexedDB
 - **Clear button (×)** — clears the search and returns to the default view. Acts as a "home" button.
 - **Admin mode (`?admin`)** — add `?admin` to the URL for full CRUD.
 - **Configurable title** — type `!title My Site` in the search bar (admin mode) to customize the `[feed]` header. Included in JSON exports.
+- **Theme support** — type `!theme amber`, `!theme white`, or `!theme green` in the search bar (admin mode) to switch the accent color. Persists across sessions and is included in JSON exports.
 - **Markdown-style links** — `[display text](url)` in content becomes a clickable link. Bare URLs are also auto-linked.
 - **JSON Save/Open** — save all entries to a JSON file, open a file to replace all content (traditional file metaphor, not merge).
 - **Auto-load on empty DB** — first visit loads `feed.json` (sample/help content). After that, you manage everything via admin mode.
 - **Keyboard-friendly** — Esc cancels create/edit, Enter submits forms.
 - **Mobile responsive** — compact cards on small screens, tables on desktop.
-- **Retro terminal aesthetic** — green-on-black monochrome theme.
+- **Retro terminal aesthetic** — green-on-black by default, with amber and white alternatives.
 
 ## URL Modes
 
@@ -115,7 +116,7 @@ Flat array (simple):
 Object with config (includes site title and other settings):
 ```json
 {
-  "config": {"site_title": "my site"},
+  "config": {"site_title": "my site", "theme": "amber"},
   "entries": [
     {"feed_date": "2026-04-12", "feed_content": "Hello world"}
   ]

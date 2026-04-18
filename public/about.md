@@ -4,6 +4,17 @@ A browser-only microblog that runs a real PostgreSQL database entirely in your b
 
 ![Mila the pug](public/mila.png)
 
+## Contents
+
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Search tips](#search-tips)
+- [Content formatting](#content-formatting)
+- [Task list example](#task-list-example)
+- [Code example](#code-example)
+- [Tech stack](#tech-stack)
+- [Links](#links)
+
 ## How it works
 
 - No backend, no server-side database

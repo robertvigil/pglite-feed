@@ -63,6 +63,7 @@ try {
         [serverModified]
       );
       await loadTitle();
+      await loadTheme();
       showLastUpdated();
     }
   } else {
@@ -94,6 +95,14 @@ try {
   // fetch failed — use whatever's in the DB
 }
 
+// --- Theme from config ---
+const VALID_THEMES = ['green', 'amber', 'white'];
+async function loadTheme() {
+  const result = await db.query("SELECT value FROM config WHERE key = 'theme'");
+  const theme = result.rows[0]?.value || 'green';
+  document.documentElement.setAttribute('data-theme', theme);
+}
+
 // --- Site title from config ---
 async function loadTitle() {
   const result = await db.query("SELECT value FROM config WHERE key = 'site_title'");
@@ -121,6 +130,21 @@ async function handleCommand(input) {
       await db.query("DELETE FROM config WHERE key = 'site_title';");
     }
     await loadTitle();
+    document.getElementById('search').value = '';
+    return true;
+  }
+
+  if (cmd === 'theme') {
+    const theme = parts[1]?.toLowerCase();
+    if (theme && VALID_THEMES.includes(theme)) {
+      await db.query(
+        "INSERT INTO config (key, value) VALUES ('theme', $1) ON CONFLICT (key) DO UPDATE SET value = $1;",
+        [theme]
+      );
+    } else {
+      await db.query("DELETE FROM config WHERE key = 'theme';");
+    }
+    await loadTheme();
     document.getElementById('search').value = '';
     return true;
   }
@@ -243,9 +267,12 @@ document.addEventListener('click', async (e) => {
     const md = await resp.text();
 
     if (!window.marked) {
-      await import('https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js').then(m => {
-        window.marked = m.marked;
-      });
+      const [markedMod, headingIdMod] = await Promise.all([
+        import('https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js'),
+        import('https://cdn.jsdelivr.net/npm/marked-gfm-heading-id/+esm'),
+      ]);
+      window.marked = markedMod.marked;
+      window.marked.use(headingIdMod.gfmHeadingId());
     }
 
     const html = window.marked(md);
@@ -297,6 +324,7 @@ if (searchParam) {
 }
 
 // --- Init ---
+loadTheme();
 loadTitle();
 showLastUpdated();
 refresh();

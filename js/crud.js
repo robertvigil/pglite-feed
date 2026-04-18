@@ -252,10 +252,13 @@ export function setupCrud(db, isAdmin, refreshFn) {
     searchInput.placeholder = savedPlaceholder;
 
     alert(`Loaded ${total} entries from ${file.name}.`);
-    // Reload title in case it changed
+    // Reload title and theme in case they changed
     if (jsonConfig.site_title !== undefined) {
       const titleEl = document.getElementById('home-link');
       titleEl.textContent = `[${jsonConfig.site_title || 'feed'}]`;
+    }
+    if (jsonConfig.theme) {
+      document.documentElement.setAttribute('data-theme', jsonConfig.theme);
     }
     await refreshFn();
     e.target.value = '';

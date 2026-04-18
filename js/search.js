@@ -120,7 +120,7 @@ export async function showTagCloud(db, outputEl, totalsEl, searchEl, after, befo
 
   outputEl.innerHTML = '<p style="line-height:2">' +
     sorted.map(([tag, count]) =>
-      `<span style="color:#0f0;cursor:pointer" class="tag-link" data-tag="${tag}">${tag}</span> <span style="color:#666">(${count})</span>`
+      `<span style="color:var(--accent);cursor:pointer" class="tag-link" data-tag="${tag}">${tag}</span> <span style="color:#666">(${count})</span>`
     ).join('&nbsp;&nbsp; ') +
     '</p>';
 
