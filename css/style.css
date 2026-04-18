@@ -197,6 +197,11 @@ tr.editing td input[type="date"] { width: auto; }
 .md-view { padding-top: 0; }
 .md-back:hover { color: var(--accent); }
 
+/* Mobile bottom padding — prevents browser toolbar from covering totals bar */
+@media (max-width: 600px) {
+  body { padding-bottom: 30px; }
+}
+
 /* Mobile — no longer needed, card layout is now the default
 @media (max-width: 600px) {
   table, tbody, tr, td { display: block; width: 100%; }
