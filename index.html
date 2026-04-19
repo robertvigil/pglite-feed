@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Feed</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
 </head>
 <body>
   <h1><span id="home-link" style="cursor:pointer">[feed]</span></h1>
@@ -21,7 +22,7 @@
     <input type="file" id="json-input" accept=".json" style="display:none">
   </div>
   <form class="create-form" id="create-form">
-    <textarea id="new-content" class="content-input" rows="2" placeholder="content (use #tags for categories)" required></textarea>
+    <textarea id="new-content" class="content-input" rows="10" placeholder="content (use #tags for categories)" required></textarea>
     <div class="form-row">
       <input type="date" id="new-date" required>
       <div class="actions">

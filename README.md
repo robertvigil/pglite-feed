@@ -29,7 +29,8 @@ Page load
 - **Date filtering** — use `after:2026-04-01` and `before:2026-04-14` in the search bar for date ranges.
 - **Search** — multi-word AND with exclusion: `"pglite feed"` matches both terms, `"-exclude"` filters out a term.
 - **Hashtag categories** — use `#tags` in content for categories (e.g., `#links`, `#notes`), then search for `#tag` to filter.
-- **Smart default view** — empty search shows only entries without hashtags. Tagged reference data (like cheat sheets) stays hidden until you search for it.
+- **Smart default view** — empty search shows entries without hashtags, plus any entry tagged `#pin`. Tagged reference data stays hidden until you search for it. Use `#pin` to force important tagged entries onto the front page.
+- **Pin to front page** — tag any entry with `#pin` and it appears on the default view regardless of other tags (e.g., `server setup guide #sysadmin #pin`).
 - **Tag cloud** — type `#` in the search bar to see all hashtags with counts. Click any tag to search for it.
 - **Search via URL** — `?search=%23git` pre-fills the search bar. Enables clickable links in content that trigger searches.
 - **Clear button (×)** — clears the search and returns to the default view. Acts as a "home" button.
@@ -47,7 +48,7 @@ Page load
 
 | Search input | Behavior |
 |---|---|
-| *(empty)* | Show only entries with NO hashtags |
+| *(empty)* | Show entries with NO hashtags, plus any tagged `#pin` |
 | `#` | Show tag cloud with counts |
 | `#git` | Normal search — entries containing "#git" |
 | `git` | Normal search — entries containing "git" (tagged or not) |
@@ -167,6 +168,16 @@ Clone the repo, deploy to your own domain, and you get the full workflow:
 2. Save to `feed.json` (↓ button), upload to your server
 3. To make it public/read-only: rename your export to `content.json` and deploy alongside `index.html`
 4. Visitors see your content, refreshed automatically when you update `content.json`
+
+## Built with
+
+- [PGlite](https://pglite.dev/) — PostgreSQL compiled to WebAssembly, by ElectricSQL
+- [marked](https://marked.js.org/) — Markdown parser and compiler
+- [marked-gfm-heading-id](https://github.com/markedjs/marked-gfm-heading-id) — GitHub-style heading anchors for marked
+- [KaTeX](https://katex.org/) — Fast math typesetting (`$E = mc^2$` → rendered equations)
+- [marked-katex-extension](https://github.com/UziTech/marked-katex-extension) — KaTeX integration for marked
+
+No frameworks, no build tools, no package manager. All dependencies loaded as ES modules from CDN.
 
 ## Browser support
 

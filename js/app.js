@@ -1,9 +1,44 @@
 // Main app — PGlite init, refresh loop, event wiring
 
 import { PGlite } from 'https://cdn.jsdelivr.net/npm/@electric-sql/pglite/dist/index.js';
+import { marked } from 'https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js';
+import { gfmHeadingId } from 'https://cdn.jsdelivr.net/npm/marked-gfm-heading-id/+esm';
+import markedKatex from 'https://cdn.jsdelivr.net/npm/marked-katex-extension/+esm';
 import { escapeHtml, renderContent } from './render.js';
 import { parseSearch, buildSearchClauses, showTagCloud } from './search.js';
 import { setupCrud } from './crud.js';
+
+// --- Configure marked ---
+marked.use(gfmHeadingId());
+marked.use(markedKatex({ throwOnError: false }));
+
+function renderMarkdown(text) {
+  let html = marked(text);
+  // Open external links in new tab
+  html = html.replace(/<a href="(https?:\/\/)/g, '<a target="_blank" rel="noopener" href="$1');
+  return html;
+}
+
+// --- Lazy Mermaid rendering — only loads mermaid.js if a diagram block exists ---
+async function renderMermaidBlocks(container) {
+  const blocks = container.querySelectorAll('code.language-mermaid');
+  if (blocks.length === 0) return;
+
+  if (!window.mermaid) {
+    const mod = await import('https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.esm.min.mjs');
+    window.mermaid = mod.default;
+    window.mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+  }
+
+  for (const block of blocks) {
+    const pre = block.parentElement;
+    const div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.replaceWith(div);
+  }
+  await window.mermaid.run();
+}
 
 // --- URL parameter parsing ---
 const params = new URLSearchParams(location.search);
@@ -102,7 +137,7 @@ try {
 }
 
 // --- Theme from config ---
-const VALID_THEMES = ['green', 'amber', 'white'];
+const VALID_THEMES = ['green', 'amber', 'white', 'plain'];
 async function loadTheme() {
   const result = await db.query("SELECT value FROM config WHERE key = 'theme'");
   const theme = result.rows[0]?.value || 'green';
@@ -186,26 +221,30 @@ async function refresh() {
   // Build WHERE clause — starts at $1 (no fixed date params anymore)
   const search = buildSearchClauses(parsed, 1);
 
-  // Default mode: hide entries with hashtags
+  // Default mode: show entries with no hashtags OR entries tagged #pin
   let noTagFilter = '';
   if (parsed.mode === 'default') {
-    noTagFilter = " AND feed_content !~ '(^|\\s)#[a-zA-Z]'";
+    noTagFilter = " AND (feed_content !~ '(^|\\s)#[a-zA-Z]' OR feed_content ILIKE '%#pin%')";
   }
 
   // Totals
-  const totalsResult = await db.query(`
-    SELECT COUNT(*) AS n
-    FROM feed
-    WHERE 1=1
-      ${noTagFilter}
-      ${search.where};
-  `, [...search.params]);
+  const [totalsResult, totalAllResult] = await Promise.all([
+    db.query(`
+      SELECT COUNT(*) AS n
+      FROM feed
+      WHERE 1=1
+        ${noTagFilter}
+        ${search.where};
+    `, [...search.params]),
+    db.query('SELECT COUNT(*) AS n FROM feed;'),
+  ]);
 
   const cnt = Number(totalsResult.rows[0].n);
+  const total = Number(totalAllResult.rows[0].n);
 
   totalsEl.style.display = 'flex';
   totalsEl.innerHTML = `
-    <div class="item"><span class="label">#:</span><span class="value">${cnt}</span></div>
+    <div class="item"><span class="label">#:</span><span class="value">${cnt} / ${total}</span></div>
   `;
 
   if (cnt === 0) {
@@ -235,7 +274,7 @@ async function refresh() {
     const displayDate = `${m}/${d}/${String(y).slice(-2)}`;
 
     html += `<tr data-id="${row.id}" data-date="${dateStr}" data-content="${escapeHtml(row.feed_content)}">
-      <td class="content-cell">${renderContent(row.feed_content)}</td>
+      <td class="content-cell md-view">${renderMarkdown(row.feed_content)}</td>
       <td>${displayDate} (${dayName})</td>`;
 
     if (!isReadOnly) {
@@ -248,6 +287,7 @@ async function refresh() {
   }
   html += '</table>';
   outputEl.innerHTML = html;
+  renderMermaidBlocks(outputEl);
 }
 
 // --- Setup CRUD (read-write controls, create form, edit/delete, JSON open/save) ---
@@ -272,21 +312,13 @@ document.addEventListener('click', async (e) => {
     }
     const md = await resp.text();
 
-    if (!window.marked) {
-      const [markedMod, headingIdMod] = await Promise.all([
-        import('https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js'),
-        import('https://cdn.jsdelivr.net/npm/marked-gfm-heading-id/+esm'),
-      ]);
-      window.marked = markedMod.marked;
-      window.marked.use(headingIdMod.gfmHeadingId());
-    }
-
-    const html = window.marked(md);
+    const html = renderMarkdown(md);
     outputEl.innerHTML = `
       <span class="md-back" id="md-back">← back</span>
       <div class="md-view">${html}</div>
     `;
     document.getElementById('md-back').addEventListener('click', () => refresh());
+    renderMermaidBlocks(outputEl);
   } catch (err) {
     outputEl.innerHTML = `<p style="color:#f66">Error: ${err.message}</p>`;
   }

@@ -85,7 +85,7 @@ export function setupCrud(db, isReadOnly, refreshFn) {
       }
       tr.classList.add('editing');
       tr.innerHTML = `
-        <td class="edit-row-1"><textarea class="edit-content" rows="2">${tr.dataset.content}</textarea></td>
+        <td class="edit-row-1"><textarea class="edit-content" rows="10">${tr.dataset.content}</textarea></td>
         <td class="edit-row-2">
           <input type="date" class="edit-date" value="${tr.dataset.date}">
           <button class="save" title="Save">✓</button>

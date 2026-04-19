@@ -10,6 +10,8 @@ A browser-only microblog that runs a real PostgreSQL database entirely in your b
 - [Quick start](#quick-start)
 - [Search tips](#search-tips)
 - [Content formatting](#content-formatting)
+- [Math (KaTeX)](#math-katex)
+- [Diagrams (Mermaid)](#diagrams-mermaid)
 - [Task list example](#task-list-example)
 - [Code example](#code-example)
 - [Tech stack](#tech-stack)
@@ -47,6 +49,39 @@ You can use two types of links in entries:
 
 > External links open in a new tab. Relative links open in the same tab.
 
+## Math (KaTeX)
+
+Inline math: $E = mc^2$, or $\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$
+
+Block equations:
+
+$$f(x) = \frac{1}{\sigma\sqrt{2\pi}} e^{-\frac{1}{2}\left(\frac{x-\mu}{\sigma}\right)^2}$$
+
+Matrix multiplication:
+
+$$\begin{bmatrix} 1 & 2 \\ 3 & 4 \end{bmatrix} \begin{bmatrix} 5 \\ 6 \end{bmatrix} = \begin{bmatrix} 17 \\ 39 \end{bmatrix}$$
+
+## Diagrams (Mermaid)
+
+Diagrams render from fenced code blocks — the library only loads when a diagram is present on the page.
+
+```mermaid
+graph LR
+    A[Browser] --> B[PGlite]
+    B --> C[(IndexedDB)]
+    C --> D[feed table]
+    C --> E[config table]
+```
+
+```mermaid
+graph TD
+    F[Page Load] --> G{content.json?}
+    G -->|exists| H[Read-Only]
+    G -->|404| I[Read-Write]
+    I --> J[feed.json seeds empty DB]
+    H --> K[DB refreshes from content.json]
+```
+
 ## Task list example
 
 - [x] PGlite database working
@@ -73,6 +108,8 @@ CREATE TABLE feed (
 | **PGlite** | PostgreSQL compiled to WebAssembly |
 | **IndexedDB** | Browser-native persistent storage |
 | **marked.js** | Markdown rendering |
+| **KaTeX** | Math/equation typesetting |
+| **Mermaid** | Diagrams from text (lazy-loaded) |
 | **Vanilla JS** | No frameworks, no build tools |
 
 ---
