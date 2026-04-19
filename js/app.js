@@ -7,7 +7,6 @@ import { setupCrud } from './crud.js';
 
 // --- URL parameter parsing ---
 const params = new URLSearchParams(location.search);
-const isAdmin = params.has('admin');
 
 // --- Init PGlite ---
 const db = new PGlite('idb://feed-v3');
@@ -25,10 +24,15 @@ await db.exec(`
   );
 `);
 
-// --- Load content: content.json (with freshness check) or feed.json (one-time fallback) ---
+// --- Determine mode: read-only (content.json exists) or read-write (no content.json) ---
+let isReadOnly = false;
+
 try {
   const headResp = await fetch('content.json', { method: 'HEAD' });
-  if (headResp.ok) {
+  const contentType = headResp.headers.get('Content-Type') || '';
+  if (headResp.ok && contentType.includes('json')) {
+    // content.json exists → read-only mode
+    isReadOnly = true;
     const serverModified = headResp.headers.get('Last-Modified') || '';
     const localResult = await db.query("SELECT value FROM config WHERE key = 'content_loaded'");
     const localModified = localResult.rows[0]?.value || '';
@@ -38,7 +42,6 @@ try {
       const resp = await fetch('content.json');
       const raw = await resp.json();
 
-      // Support both formats: flat array (old) or {config, entries} object (new)
       const entries = Array.isArray(raw) ? raw : (raw.entries || []);
       const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
 
@@ -51,10 +54,10 @@ try {
       }
 
       // Apply config from JSON
-      if (jsonConfig.site_title) {
+      for (const [key, value] of Object.entries(jsonConfig)) {
         await db.query(
-          "INSERT INTO config (key, value) VALUES ('site_title', $1) ON CONFLICT (key) DO UPDATE SET value = $1;",
-          [jsonConfig.site_title]
+          "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
+          [key, value]
         );
       }
 
@@ -67,11 +70,13 @@ try {
       showLastUpdated();
     }
   } else {
+    // content.json does not exist → read-write mode
     const count = await db.query('SELECT COUNT(*) AS n FROM feed;');
     if (count.rows[0].n === 0n || count.rows[0].n === 0) {
       document.getElementById('output').textContent = 'Loading...';
       const resp = await fetch('feed.json');
-      if (resp.ok) {
+      const feedType = resp.headers.get('Content-Type') || '';
+      if (resp.ok && feedType.includes('json')) {
         const raw = await resp.json();
         const entries = Array.isArray(raw) ? raw : (raw.entries || []);
         const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
@@ -81,13 +86,14 @@ try {
             [row.feed_date, row.feed_content]
           );
         }
-        if (jsonConfig.site_title) {
+        for (const [key, value] of Object.entries(jsonConfig)) {
           await db.query(
-            "INSERT INTO config (key, value) VALUES ('site_title', $1) ON CONFLICT (key) DO UPDATE SET value = $1;",
-            [jsonConfig.site_title]
+            "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
+            [key, value]
           );
-          await loadTitle();
         }
+        await loadTitle();
+        await loadTheme();
       }
     }
   }
@@ -110,11 +116,11 @@ async function loadTitle() {
   document.getElementById('home-link').textContent = `[${title}]`;
 }
 
-// --- Search bar commands (! prefix, admin only) ---
+// --- Search bar commands (! prefix, read-write only) ---
 async function handleCommand(input) {
   const raw = input.trim();
   if (!raw.startsWith('!')) return false;
-  if (!isAdmin) return false;
+  if (isReadOnly) return false;
 
   const parts = raw.substring(1).split(/\s+/);
   const cmd = parts[0]?.toLowerCase();
@@ -183,7 +189,7 @@ async function refresh() {
   // Default mode: hide entries with hashtags
   let noTagFilter = '';
   if (parsed.mode === 'default') {
-    noTagFilter = " AND feed_content NOT SIMILAR TO '%#[a-zA-Z]%'";
+    noTagFilter = " AND feed_content !~ '(^|\\s)#[a-zA-Z]'";
   }
 
   // Totals
@@ -219,7 +225,7 @@ async function refresh() {
   const dayNames = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa'];
 
   let html = '<table><tr><th>Content</th><th>Date</th>';
-  if (isAdmin) html += '<th></th>';
+  if (!isReadOnly) html += '<th></th>';
   html += '</tr>';
 
   for (const row of result.rows) {
@@ -232,7 +238,7 @@ async function refresh() {
       <td class="content-cell">${renderContent(row.feed_content)}</td>
       <td>${displayDate} (${dayName})</td>`;
 
-    if (isAdmin) {
+    if (!isReadOnly) {
       html += `<td class="actions">
           <button class="edit" title="Edit">✎</button>
           <button class="delete" title="Delete">✕</button>
@@ -244,8 +250,8 @@ async function refresh() {
   outputEl.innerHTML = html;
 }
 
-// --- Setup CRUD (admin controls, create form, edit/delete, JSON open/save) ---
-setupCrud(db, isAdmin, refresh);
+// --- Setup CRUD (read-write controls, create form, edit/delete, JSON open/save) ---
+setupCrud(db, isReadOnly, refresh);
 
 // --- Markdown viewer: intercept clicks on .md links ---
 document.addEventListener('click', async (e) => {
@@ -299,19 +305,18 @@ function goHome() {
 document.getElementById('clear-search').addEventListener('click', goHome);
 document.getElementById('home-link').addEventListener('click', goHome);
 
-// --- Wire up search (with command interception) ---
+// --- Wire up search (with command interception in read-write mode) ---
 document.getElementById('search').addEventListener('input', async (e) => {
   const val = e.target.value.trim();
-  // Don't search while typing a command
-  if (val.startsWith('!')) return;
+  if (!isReadOnly && val.startsWith('!')) return;
   refresh();
 });
 
-// Enter key executes commands
+// Enter key executes commands (read-write only)
 document.getElementById('search').addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter') return;
   const val = e.target.value.trim();
-  if (val.startsWith('!')) {
+  if (!isReadOnly && val.startsWith('!')) {
     e.preventDefault();
     await handleCommand(val);
   }

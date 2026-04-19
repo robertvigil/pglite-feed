@@ -26,7 +26,7 @@ A browser-only microblog that runs a real PostgreSQL database entirely in your b
 
 1. The default view shows non-tagged entries
 2. Type `#` in the search bar to browse all hashtag categories
-3. Add `?admin` to the URL for create/edit/delete controls
+3. Create, edit, and delete entries using the toolbar buttons (✚ ✎ ✕)
 4. Use the down-arrow to save a JSON backup, up-arrow to load one
 
 ## Search tips

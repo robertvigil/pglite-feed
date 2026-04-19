@@ -2,14 +2,14 @@
 
 import { escapeHtml } from './render.js';
 
-export function setupCrud(db, isAdmin, refreshFn) {
+export function setupCrud(db, isReadOnly, refreshFn) {
   const createForm = document.getElementById('create-form');
   const createToggle = document.getElementById('create-toggle');
   const createCancel = document.getElementById('create-cancel');
   const outputEl = document.getElementById('output');
 
-  // --- Show admin controls ---
-  if (isAdmin) {
+  // --- Show action bar in read-write mode ---
+  if (!isReadOnly) {
     document.getElementById('action-bar').style.display = 'flex';
   }
 
@@ -61,7 +61,7 @@ export function setupCrud(db, isAdmin, refreshFn) {
 
   // --- Row edit/delete via event delegation ---
   outputEl.addEventListener('click', async (e) => {
-    if (!isAdmin) return;
+    if (isReadOnly) return;
     const btn = e.target.closest('button');
     if (!btn) return;
     const tr = btn.closest('tr');
@@ -136,13 +136,6 @@ export function setupCrud(db, isAdmin, refreshFn) {
       refreshFn();
       return;
     }
-  });
-
-  // --- Exit admin mode ---
-  document.getElementById('exit-admin')?.addEventListener('click', () => {
-    const url = new URL(location);
-    url.searchParams.delete('admin');
-    location.href = url;
   });
 
   // --- JSON Save (exports config + entries) ---

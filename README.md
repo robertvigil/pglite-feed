@@ -6,7 +6,23 @@ A browser-only microblog/feed powered by [PGlite](https://pglite.dev/) (PostgreS
 
 ## How it works
 
-A static web app loaded in your browser. Entries live in the browser's IndexedDB via PGlite. Content is managed locally via `?admin` mode. A `feed.json` file auto-loads as sample content on first visit.
+A static web app loaded in your browser. Entries live in the browser's IndexedDB via PGlite. A `feed.json` file auto-loads as sample content on first visit.
+
+## Modes
+
+The app automatically detects its mode on page load — no URL parameters or toggles:
+
+```
+Page load
+  ├── content.json exists on server → READ-ONLY
+  │   └── Public-facing site, content managed externally
+  │
+  └── content.json not found → READ-WRITE
+      └── Full CRUD, import/export, commands — all controls always visible
+```
+
+- **Read-write** — the default when you clone and run. All editing controls are always visible. `feed.json` seeds the DB on first visit.
+- **Read-only** — activated by deploying a `content.json` file alongside `index.html`. The app refreshes from `content.json` automatically. No editing controls, no `!` commands. Used for public-facing sites whose content is maintained externally.
 
 ## Features
 
@@ -17,22 +33,15 @@ A static web app loaded in your browser. Entries live in the browser's IndexedDB
 - **Tag cloud** — type `#` in the search bar to see all hashtags with counts. Click any tag to search for it.
 - **Search via URL** — `?search=%23git` pre-fills the search bar. Enables clickable links in content that trigger searches.
 - **Clear button (×)** — clears the search and returns to the default view. Acts as a "home" button.
-- **Admin mode (`?admin`)** — add `?admin` to the URL for full CRUD.
-- **Configurable title** — type `!title My Site` in the search bar (admin mode) to customize the `[feed]` header. Included in JSON exports.
-- **Theme support** — type `!theme amber`, `!theme white`, or `!theme green` in the search bar (admin mode) to switch the accent color. Persists across sessions and is included in JSON exports.
+- **Inline CRUD** — create (✚), edit (✎), and delete (✕) entries directly. Always visible in read-write mode.
+- **Configurable title** — type `!title My Site` in the search bar to customize the `[feed]` header. Included in JSON exports.
+- **Theme support** — type `!theme amber`, `!theme white`, or `!theme green` in the search bar to switch the accent color. Persists across sessions and is included in JSON exports.
 - **Markdown-style links** — `[display text](url)` in content becomes a clickable link. Bare URLs are also auto-linked.
-- **JSON Save/Open** — save all entries to a JSON file, open a file to replace all content (traditional file metaphor, not merge).
-- **Auto-load on empty DB** — first visit loads `feed.json` (sample/help content). After that, you manage everything via admin mode.
-- **Keyboard-friendly** — Esc cancels create/edit, Enter submits forms.
+- **JSON Save/Open** — save all entries to a JSON file (↓), open a file to replace all content (↑). Traditional file metaphor, not merge.
+- **Auto-load on empty DB** — first visit loads `feed.json` (sample/help content). After that, you manage everything yourself.
+- **Keyboard-friendly** — Esc cancels create/edit, Ctrl+Enter or Shift+Enter submits forms.
 - **Mobile responsive** — compact cards on small screens, tables on desktop.
 - **Retro terminal aesthetic** — green-on-black by default, with amber and white alternatives.
-
-## URL Modes
-
-| URL | What you see |
-|---|---|
-| `/feed/` | Read-only view of all entries |
-| `/feed/?admin` | Full CRUD controls |
 
 ## Search behavior
 
@@ -148,16 +157,16 @@ The feed app has no awareness of these pages — they're just URLs in the conten
 - All data lives in your browser's IndexedDB
 - Nothing is sent to any server
 - Other visitors get their own empty database (or the sample `feed.json` content on first visit)
-- `?admin` is a UX toggle, not real auth — anyone can use it, but they only edit their own browser's data
+- There's no admin login — editing controls are always visible in read-write mode, but each visitor only edits their own browser's data
 
 ## Forking
 
 Clone the repo, deploy to your own domain, and you get the full workflow:
 
-1. Visit `?admin`, create entries
-2. Tag entries with #hashtags to create categories
-3. Save to `feed.json`, upload to your server
-4. Your visitors see your content on first visit
+1. Create entries, tag them with #hashtags
+2. Save to `feed.json` (↓ button), upload to your server
+3. To make it public/read-only: rename your export to `content.json` and deploy alongside `index.html`
+4. Visitors see your content, refreshed automatically when you update `content.json`
 
 ## Browser support
 

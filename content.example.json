@@ -1,0 +1,18 @@
+{
+  "config": {
+    "site_title": "my site",
+    "theme": "green"
+  },
+  "entries": [
+    {"feed_date": "2026-04-11", "feed_content": "Welcome — this is a read-only site powered by pglite-feed. Content is managed externally via content.json and refreshes automatically when updated."},
+    {"feed_date": "2026-04-10", "feed_content": "Everything runs in your browser via PGlite (Postgres in WebAssembly). Nothing is sent to a server — each visitor gets their own private copy of the data."},
+    {"feed_date": "2026-04-09", "feed_content": "Use the search bar to find entries. Multi-word AND matching, -exclusion, after: and before: date filtering all work."},
+    {"feed_date": "2026-04-08", "feed_content": "Type # in the search bar to browse all hashtag categories as a cloud. Click any tag to filter. The × button clears the search."},
+    {"feed_date": "2026-04-07", "feed_content": "Content supports [markdown links](https://example.com) and bare URLs like https://example.com — both become clickable."},
+    {"feed_date": "2026-04-06", "feed_content": "Read more [about this app](public/about.md) — rendered inline with the retro theme."},
+    {"feed_date": "2026-04-05", "feed_content": "To create your own site: fork [pglite-feed on GitHub](https://github.com/robertvigil/pglite-feed), edit content.json, and deploy."},
+    {"feed_date": "2026-04-04", "feed_content": "Set the title and theme in the config section of content.json. Available themes: green (default), amber, white."},
+    {"feed_date": "2026-04-01", "feed_content": "Tagged entries are hidden from the default view. Type # to browse them. #demo"},
+    {"feed_date": "2026-04-01", "feed_content": "These are sample entries from content.example.json. Replace them with your own content. #demo"}
+  ]
+}
