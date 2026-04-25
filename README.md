@@ -4,6 +4,8 @@ A browser-only microblog/feed powered by [PGlite](https://pglite.dev/) (PostgreS
 
 <img src="screenshots/mobile.jpg" alt="Mobile screenshot" width="300">
 
+**Live demo:** [robertvigil.com/feed](https://robertvigil.com/public/feed)
+
 ## How it works
 
 A static web app loaded in your browser. Entries live in the browser's IndexedDB via PGlite. A `feed.json` file auto-loads as sample content on first visit.
@@ -148,7 +150,7 @@ Both can be mixed in one entry.
 
 Entries can link to static pages hosted alongside the feed:
 
-- `/public/page.html` — accessible by anyone
+- `/assets/page.html` — accessible by anyone
 - `/private/page.html` — behind basic auth (nginx `auth_basic`)
 
 The feed app has no awareness of these pages — they're just URLs in the content. The auth boundary is the web server's job.

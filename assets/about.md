@@ -2,7 +2,7 @@
 
 A browser-only microblog that runs a real PostgreSQL database entirely in your browser via [PGlite](https://pglite.dev/).
 
-![Mila the pug](public/mila.png)
+![Mila the pug](assets/mila.png)
 
 ## Contents
 
