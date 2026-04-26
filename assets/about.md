@@ -29,7 +29,14 @@ A browser-only microblog that runs a real PostgreSQL database entirely in your b
 1. The default view shows non-tagged entries
 2. Type `#` in the search bar to browse all hashtag categories
 3. Create, edit, and delete entries using the toolbar buttons (✚ ✎ ✕)
-4. Use the down-arrow to save a JSON backup, up-arrow to load one
+4. Persistence depends on your browser:
+    - **🔗 / 📝 Attach** (Chrome / Edge / Arc / Opera, and Brave with the [File System Access flag](https://brave.com/) enabled). Two icons:
+        - 🔗 opens an *existing* JSON file (safe — won't overwrite without asking).
+        - 📝 creates a new JSON file (or overwrites the one you pick) and starts auto-syncing.
+        - After attach, every edit writes to disk. Reload prompts once to re-grant permission.
+    - **↓ Save / ↑ Open** (Firefox / Safari) — manual export/import via download blob.
+
+> Live-sync direction is one-way: app edits → file. External edits to the file aren't picked up while attached.
 
 ## Search tips
 

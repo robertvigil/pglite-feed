@@ -1,6 +1,39 @@
-// CRUD operations — create, edit, delete, JSON open/save
+// CRUD operations — create, edit, delete, JSON open/save, live-sync to attached file
 
 import { escapeHtml } from './render.js';
+
+// --- File System Access API support: persistent handle for live-sync to a local JSON file ---
+const hasFSA = 'showSaveFilePicker' in window && window.isSecureContext;
+const HANDLE_DB_NAME = 'pglite-feed-handles';
+const HANDLE_KEY = 'attached-file';
+
+function openHandleDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(HANDLE_DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('handles');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbHandle(op, value) {
+  const db = await openHandleDB();
+  const tx = db.transaction('handles', op === 'get' ? 'readonly' : 'readwrite');
+  const store = tx.objectStore('handles');
+  if (op === 'get') {
+    return new Promise((resolve, reject) => {
+      const req = store.get(HANDLE_KEY);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  if (op === 'put') store.put(value, HANDLE_KEY);
+  if (op === 'delete') store.delete(HANDLE_KEY);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
 
 export function setupCrud(db, isReadOnly, refreshFn) {
   const createForm = document.getElementById('create-form');
@@ -11,6 +44,123 @@ export function setupCrud(db, isReadOnly, refreshFn) {
   // --- Show action bar in read-write mode ---
   if (!isReadOnly) {
     document.getElementById('action-bar').style.display = 'flex';
+  }
+
+  // --- Attached-file state (live-sync via File System Access API) ---
+  let attachedHandle = null;
+  let attachedPerm = null; // 'granted' | 'prompt' | 'denied' | null
+
+  async function buildExportData() {
+    const result = await db.query(`
+      SELECT feed_date, feed_content
+      FROM feed
+      ORDER BY feed_date DESC, feed_content ASC;
+    `);
+    const entries = result.rows.map(row => ({
+      feed_date: new Date(row.feed_date).toISOString().split('T')[0],
+      feed_content: row.feed_content,
+    }));
+    const configResult = await db.query(
+      "SELECT key, value FROM config WHERE key NOT IN ('content_loaded')"
+    );
+    const config = {};
+    for (const row of configResult.rows) config[row.key] = row.value;
+    return Object.keys(config).length > 0 ? { config, entries } : entries;
+  }
+
+  async function syncToFile() {
+    if (!attachedHandle || attachedPerm !== 'granted') return;
+    try {
+      const data = await buildExportData();
+      const writable = await attachedHandle.createWritable();
+      await writable.write(JSON.stringify(data, null, 2));
+      await writable.close();
+    } catch (err) {
+      console.error('Live-sync write failed:', err);
+      attachedPerm = null;
+      updateAttachUI();
+    }
+  }
+
+  function updateAttachUI() {
+    const nameEl = document.getElementById('attach-name');
+    const btn = document.getElementById('attach-file');
+    const createBtn = document.getElementById('create-file');
+    if (!nameEl || !btn) return;
+    nameEl.classList.remove('granted', 'needs-permission');
+    if (!attachedHandle) {
+      nameEl.textContent = '';
+      nameEl.title = '';
+      btn.title = 'Open an existing JSON file and attach (live-sync). Click to pick a file.';
+      if (createBtn) createBtn.style.display = '';
+      return;
+    }
+    // Attached — hide the "create new" button; only one attachment at a time
+    if (createBtn) createBtn.style.display = 'none';
+    nameEl.textContent = attachedHandle.name;
+    if (attachedPerm === 'granted') {
+      nameEl.classList.add('granted');
+      const tip = `Attached to ${attachedHandle.name} — every edit auto-saves to this file. Click to detach.`;
+      btn.title = tip;
+      nameEl.title = tip;
+    } else {
+      nameEl.classList.add('needs-permission');
+      const tip = `Write permission to ${attachedHandle.name} expired (new browser session). Click to re-grant and resume auto-save.`;
+      btn.title = tip;
+      nameEl.title = tip;
+    }
+  }
+
+  async function importJsonData(raw, sourceLabel) {
+    const entries = Array.isArray(raw) ? raw : (raw.entries || []);
+    const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
+
+    if (!Array.isArray(entries)) {
+      alert('JSON must be an array of entries or {config, entries} object.');
+      return false;
+    }
+
+    const searchInput = document.getElementById('search');
+    const savedSearch = searchInput.value;
+    const savedPlaceholder = searchInput.placeholder;
+    searchInput.disabled = true;
+    searchInput.value = '';
+
+    await db.exec('DELETE FROM feed;');
+
+    const total = entries.length;
+    for (let i = 0; i < entries.length; i++) {
+      const row = entries[i];
+      await db.query(
+        'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
+        [row.feed_date, row.feed_content]
+      );
+      if (i % 25 === 0 || i === entries.length - 1) {
+        searchInput.placeholder = `Loading ${i + 1} / ${total}...`;
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    for (const [key, value] of Object.entries(jsonConfig)) {
+      await db.query(
+        "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
+        [key, value]
+      );
+    }
+
+    searchInput.disabled = false;
+    searchInput.value = savedSearch;
+    searchInput.placeholder = savedPlaceholder;
+
+    if (jsonConfig.site_title !== undefined) {
+      const titleEl = document.getElementById('home-link');
+      titleEl.textContent = `[${jsonConfig.site_title || 'feed'}]`;
+    }
+    if (jsonConfig.theme) {
+      document.documentElement.setAttribute('data-theme', jsonConfig.theme);
+    }
+    alert(`Loaded ${total} entries from ${sourceLabel}.`);
+    return true;
   }
 
   // --- Create form ---
@@ -54,6 +204,7 @@ export function setupCrud(db, isReadOnly, refreshFn) {
       );
       hideCreateForm();
       await refreshFn();
+      await syncToFile();
     } catch (err) {
       alert('Failed to create entry: ' + err.message);
     }
@@ -72,6 +223,7 @@ export function setupCrud(db, isReadOnly, refreshFn) {
       if (!confirm('Delete this entry?')) return;
       await db.query('DELETE FROM feed WHERE id = $1;', [id]);
       await refreshFn();
+      await syncToFile();
       return;
     }
 
@@ -104,6 +256,7 @@ export function setupCrud(db, isReadOnly, refreshFn) {
           [date, content, id]
         );
         await refreshFn();
+        await syncToFile();
       } catch (err) {
         alert('Update failed: ' + err.message);
       }
@@ -140,37 +293,13 @@ export function setupCrud(db, isReadOnly, refreshFn) {
 
   // --- JSON Save (exports config + entries) ---
   document.getElementById('save-json')?.addEventListener('click', async () => {
-    const result = await db.query(`
-      SELECT feed_date, feed_content
-      FROM feed
-      ORDER BY feed_date DESC, feed_content ASC;
-    `);
-
-    if (result.rows.length === 0) {
+    const data = await buildExportData();
+    const entries = Array.isArray(data) ? data : data.entries;
+    if (entries.length === 0) {
       alert('No entries to save.');
       return;
     }
-
-    const entries = result.rows.map(row => ({
-      feed_date: new Date(row.feed_date).toISOString().split('T')[0],
-      feed_content: row.feed_content,
-    }));
-
-    // Build config from config table
-    const configResult = await db.query(
-      "SELECT key, value FROM config WHERE key NOT IN ('content_loaded')"
-    );
-    const config = {};
-    for (const row of configResult.rows) {
-      config[row.key] = row.value;
-    }
-
-    // Export as object if config exists, flat array if not (backward compatible)
-    const output = Object.keys(config).length > 0
-      ? { config, entries }
-      : entries;
-
-    const json = JSON.stringify(output, null, 2);
+    const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -202,58 +331,164 @@ export function setupCrud(db, isReadOnly, refreshFn) {
       return;
     }
 
-    // Support both formats: flat array (old) or {config, entries} object (new)
-    const entries = Array.isArray(raw) ? raw : (raw.entries || []);
-    const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
-
-    if (!Array.isArray(entries)) {
-      alert('JSON must be an array of entries or {config, entries} object.');
-      return;
+    const ok = await importJsonData(raw, file.name);
+    if (ok) {
+      await refreshFn();
+      await syncToFile();
     }
-
-    const searchInput = document.getElementById('search');
-    const savedSearch = searchInput.value;
-    const savedPlaceholder = searchInput.placeholder;
-    searchInput.disabled = true;
-    searchInput.value = '';
-
-    await db.exec('DELETE FROM feed;');
-
-    const total = entries.length;
-    for (let i = 0; i < entries.length; i++) {
-      const row = entries[i];
-      await db.query(
-        'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
-        [row.feed_date, row.feed_content]
-      );
-      if (i % 25 === 0 || i === entries.length - 1) {
-        searchInput.placeholder = `Loading ${i + 1} / ${total}...`;
-        await new Promise(r => setTimeout(r, 0));
-      }
-    }
-
-    // Apply config from JSON
-    for (const [key, value] of Object.entries(jsonConfig)) {
-      await db.query(
-        "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
-        [key, value]
-      );
-    }
-
-    searchInput.disabled = false;
-    searchInput.value = savedSearch;
-    searchInput.placeholder = savedPlaceholder;
-
-    alert(`Loaded ${total} entries from ${file.name}.`);
-    // Reload title and theme in case they changed
-    if (jsonConfig.site_title !== undefined) {
-      const titleEl = document.getElementById('home-link');
-      titleEl.textContent = `[${jsonConfig.site_title || 'feed'}]`;
-    }
-    if (jsonConfig.theme) {
-      document.documentElement.setAttribute('data-theme', jsonConfig.theme);
-    }
-    await refreshFn();
     e.target.value = '';
   });
+
+  // --- Attach to local file (File System Access API) ---
+  if (!isReadOnly && hasFSA) {
+    // FSA available — hide the legacy ↑/↓ buttons; 🔗 / 📝 cover both jobs
+    document.getElementById('save-json').style.display = 'none';
+    document.getElementById('open-json').style.display = 'none';
+    const attachBtn = document.getElementById('attach-file');
+    const createBtn = document.getElementById('create-file');
+    attachBtn.style.display = '';
+    createBtn.style.display = '';
+
+    async function pickAndAttach() {
+      // Use showOpenFilePicker, NOT showSaveFilePicker.
+      // GTK's Save dialog truncates the chosen file when you click "Replace",
+      // before our code can read it — silently destroying existing content.
+      // showOpenFilePicker reads the file as-is and doesn't truncate.
+      // To attach to a new (not-yet-existing) file, the user creates it first
+      // via their file manager / `touch new-feed.json` and then picks it here.
+      let handle;
+      try {
+        [handle] = await window.showOpenFilePicker({
+          types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+          multiple: false,
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        alert('Could not pick file: ' + err.message);
+        return;
+      }
+
+      // Ensure read+write permission (showOpenFilePicker may grant read-only).
+      let perm = await handle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') {
+        perm = await handle.requestPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          alert('Write permission denied — cannot attach.');
+          return;
+        }
+      }
+
+      const file = await handle.getFile();
+      const text = await file.text();
+
+      let existing = null;
+      if (text.trim().length > 0) {
+        try { existing = JSON.parse(text); } catch {}
+      }
+      const existingEntries = existing
+        ? (Array.isArray(existing) ? existing : (existing.entries || []))
+        : null;
+
+      // Decide whether the post-attach sync should run.
+      // Default: yes (writes current IDB into the new file).
+      // If the file already has content we'd be destroying, only sync when the user
+      // explicitly chose to load it (in which case IDB now matches the file anyway).
+      let syncAfterAttach = true;
+
+      if (existingEntries && existingEntries.length > 0) {
+        const load = confirm(
+          `"${handle.name}" already contains ${existingEntries.length} entries.\n\n` +
+          `Click OK to LOAD the file into the feed (replaces current feed).\n` +
+          `Click Cancel to KEEP the current feed (the file stays as-is until you make an edit, which will overwrite it).`
+        );
+        if (load) {
+          await importJsonData(existing, handle.name);
+          // IDB now matches the file — no need to write back.
+        }
+        syncAfterAttach = false;
+      } else if (text.trim().length > 0 && !existing) {
+        // File has content but isn't recognized as a feed JSON.
+        const ok = confirm(
+          `"${handle.name}" has existing content that isn't recognized as a feed file.\n\n` +
+          `Click OK to attach anyway (the content stays as-is until your next edit, which will overwrite it).\n` +
+          `Click Cancel to abort.`
+        );
+        if (!ok) return;
+        syncAfterAttach = false;
+      }
+
+      attachedHandle = handle;
+      attachedPerm = 'granted';
+      await idbHandle('put', handle);
+      updateAttachUI();
+      await refreshFn();
+      if (syncAfterAttach) await syncToFile();
+    }
+
+    attachBtn.addEventListener('click', async () => {
+      if (!attachedHandle) {
+        await pickAndAttach();
+        return;
+      }
+
+      if (attachedPerm !== 'granted') {
+        try {
+          const perm = await attachedHandle.requestPermission({ mode: 'readwrite' });
+          attachedPerm = perm;
+          updateAttachUI();
+          if (perm === 'granted') await syncToFile();
+        } catch (err) {
+          console.error('Permission request failed:', err);
+        }
+        return;
+      }
+
+      if (confirm(`Detach from "${attachedHandle.name}"?\n\nFuture edits won't sync to disk.`)) {
+        attachedHandle = null;
+        attachedPerm = null;
+        await idbHandle('delete');
+        updateAttachUI();
+      }
+    });
+
+    document.getElementById('attach-name').addEventListener('click', () => {
+      if (attachedHandle && attachedPerm !== 'granted') attachBtn.click();
+    });
+
+    // 📝 Create new file — uses showSaveFilePicker. The user has explicitly
+    // chosen "create new", so any existing file they pick gets replaced with
+    // the current IDB state. (This is the destructive-but-intentional path.)
+    createBtn.addEventListener('click', async () => {
+      let handle;
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: 'feed.json',
+          types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        alert('Could not pick file: ' + err.message);
+        return;
+      }
+      attachedHandle = handle;
+      attachedPerm = 'granted';
+      await idbHandle('put', handle);
+      updateAttachUI();
+      await refreshFn();
+      await syncToFile();
+    });
+
+    // Restore any previously-attached handle
+    (async () => {
+      try {
+        const handle = await idbHandle('get');
+        if (!handle) { updateAttachUI(); return; }
+        attachedHandle = handle;
+        attachedPerm = await handle.queryPermission({ mode: 'readwrite' });
+        updateAttachUI();
+      } catch (err) {
+        console.error('Failed to restore attached handle:', err);
+      }
+    })();
+  }
 }

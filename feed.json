@@ -2,13 +2,13 @@
   {"feed_date": "2026-04-11", "feed_content": "Welcome to pglite-feed — a browser-only microblog powered by PGlite (Postgres in WebAssembly)."},
   {"feed_date": "2026-04-10", "feed_content": "All data lives in your browser's IndexedDB. Nothing is sent to a server."},
   {"feed_date": "2026-04-09", "feed_content": "Use the ✚ button to create entries. Click ✎ to edit or ✕ to delete. Ctrl+Enter or Shift+Enter submits, Esc cancels."},
-  {"feed_date": "2026-04-08", "feed_content": "Use the ↓ button to export a JSON backup, ↑ to load one. Great for transferring between browsers, restoring, or sharing content."},
+  {"feed_date": "2026-04-08", "feed_content": "Persist your data to disk (Chrome/Edge/Arc/Opera, or Brave with the [File System Access flag](brave://flags/#file-system-access-api) enabled): 🔗 opens an existing JSON file and attaches (safe — read-then-decide); 📝 creates a new JSON file (or overwrites the picked one) and attaches. Once attached, every edit auto-syncs to disk. Browsers without the API show ↓/↑ instead — manual save and load via download/upload."},
   {"feed_date": "2026-04-07", "feed_content": "Organize with #hashtags in your content. Tagged entries are hidden from the default view — type # in the search bar to browse all tags as a cloud."},
   {"feed_date": "2026-04-06", "feed_content": "Search supports multi-word AND matching, -exclusion, after: and before: date filtering, and [linkable searches](?search=%23demo) via URL parameters."},
   {"feed_date": "2026-04-05", "feed_content": "Use [markdown links](https://example.com) or paste bare URLs like https://example.com — both become clickable. External links open in a new tab."},
   {"feed_date": "2026-04-04", "feed_content": "Customize the site title with !title My Site and the color theme with !theme amber, !theme white, or !theme green (default). Settings persist and are included in JSON exports."},
   {"feed_date": "2026-04-03", "feed_content": "Read more [about this app](assets/about.md) — rendered inline with the retro theme, complete with table of contents."},
   {"feed_date": "2026-04-02", "feed_content": "Fork this repo and deploy to your own domain — [pglite-feed on GitHub](https://github.com/robertvigil/pglite-feed)"},
-  {"feed_date": "2026-04-01", "feed_content": "These are sample entries that loaded on first visit. Edit or delete them, or use ↑ to load your own JSON. #demo"},
+  {"feed_date": "2026-04-01", "feed_content": "These are sample entries that loaded on first visit. Edit or delete them, or load your own JSON via 🔗 (or ↑ if your browser doesn't support attach). #demo"},
   {"feed_date": "2026-04-01", "feed_content": "Tagged entries like this one are hidden from the default view. Search for #demo or type # to find them. #demo"}
 ]

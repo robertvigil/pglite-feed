@@ -40,7 +40,7 @@ Page load
 - **Configurable title** — type `!title My Site` in the search bar to customize the `[feed]` header. Included in JSON exports.
 - **Theme support** — type `!theme amber`, `!theme white`, or `!theme green` in the search bar to switch the accent color. Persists across sessions and is included in JSON exports.
 - **Markdown-style links** — `[display text](url)` in content becomes a clickable link. Bare URLs are also auto-linked.
-- **JSON Save/Open** — save all entries to a JSON file (↓), open a file to replace all content (↑). Traditional file metaphor, not merge.
+- **Persistence** — on Chromium browsers (Chrome/Edge/Brave/Arc) over HTTPS or `localhost`, two icons attach the feed to a real JSON file on disk: `🔗` opens an existing file (safe — read-then-decide), `📝` creates a new file or overwrites a chosen one. After attach, every edit live-syncs. On Firefox/Safari, falls back to traditional `↓ Save` / `↑ Open` buttons. Capability-gated — the UI shows one flow or the other, never both.
 - **Auto-load on empty DB** — first visit loads `feed.json` (sample/help content). After that, you manage everything yourself.
 - **Keyboard-friendly** — Esc cancels create/edit, Ctrl+Enter or Shift+Enter submits forms.
 - **Mobile responsive** — compact cards on small screens, tables on desktop.
@@ -107,13 +107,34 @@ Then open `http://localhost:8767/`.
 
 It's two files: `index.html` + `feed.json`. Drop them behind any web server — nginx, Caddy, Vercel, GitHub Pages, etc.
 
-## JSON Save / Open
+## Persistence
 
-**Save (↓ button):** exports ALL entries as a JSON array. User picks the filename. Default: `feed.json`.
+The app picks one of two flows based on browser capability — only one is shown at a time.
 
-**Open (↑ button):** replaces ALL existing content with the contents of a JSON file. Prompts with a warning before replacing. This is a complete replacement, not a merge.
+### 🔗 / 📝 Attach (Chromium + HTTPS / localhost)
 
-This matches the traditional "Open File" / "Save File" mental model.
+Two icons replace the manual save/load flow:
+
+- **🔗 Open** — pick an *existing* JSON file and attach. The app reads it as-is. If the file has entries, it asks whether to load them into the feed or keep the current feed (file is preserved until the first edit). Safe — never destructive.
+- **📝 Create** — pick a path (or filename to overwrite) and attach. The app immediately writes the current feed to disk. The OS shows its own "Replace?" warning if the file already exists; confirming it means you've opted into overwriting.
+
+After attaching, every edit (create / edit / delete) writes the current feed back to disk. No manual save.
+
+- The icon shows the attached filename, e.g. `🔗 feed.json`.
+- The handle persists across reloads. On a new browser session, the icon shows in amber with a `⚠` — click it once to re-grant write permission, then sync resumes silently.
+- Click the icon again while attached → confirm-detach.
+
+This uses the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API) — the picked file is on the *visitor's* machine, not the server's.
+
+> **Why two icons?** Linux's GTK Save dialog truncates the chosen file before the browser hands it back to JavaScript, which makes a unified "open or create" button unsafe. Splitting them into 🔗 (read-then-decide) and 📝 (intentional overwrite) keeps the destructive path opt-in.
+
+### ↓ Save / ↑ Open (Firefox / Safari / non-secure HTTP)
+
+**Save (↓):** exports ALL entries as a JSON file via download. User picks the filename. Default: `feed.json`.
+
+**Open (↑):** replaces ALL existing content with the contents of a JSON file. Prompts with a warning before replacing. Complete replacement, not a merge.
+
+Traditional "Open File" / "Save File" mental model.
 
 ### feed.json format
 
@@ -184,6 +205,14 @@ No frameworks, no build tools, no package manager. All dependencies loaded as ES
 ## Browser support
 
 Needs a modern browser with ES modules, IndexedDB, WebAssembly, and `:has()` CSS selector (2023+).
+
+The live-sync `🔗` flow additionally requires the [File System Access API](https://caniuse.com/native-filesystem-api) and a secure context (HTTPS or `localhost`):
+
+- ✅ **Chrome / Edge / Arc / Opera** — works out of the box.
+- ⚠️ **Brave** — disabled by default. Enable via `brave://flags/#file-system-access-api` → set to **Enabled** → relaunch.
+- ❌ **Firefox / Safari** — not available; falls back to `↓ ↑` (same data, manual save/load).
+
+To verify in DevTools: `'showSaveFilePicker' in window && window.isSecureContext` should return `true`.
 
 ## License
 
