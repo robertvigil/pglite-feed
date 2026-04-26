@@ -140,7 +140,7 @@ try {
 const VALID_THEMES = ['green', 'amber', 'white', 'plain'];
 async function loadTheme() {
   const result = await db.query("SELECT value FROM config WHERE key = 'theme'");
-  const theme = result.rows[0]?.value || 'green';
+  const theme = result.rows[0]?.value || 'plain';
   document.documentElement.setAttribute('data-theme', theme);
 }
 
@@ -172,6 +172,7 @@ async function handleCommand(input) {
     }
     await loadTitle();
     document.getElementById('search').value = '';
+    await syncToFile();
     return true;
   }
 
@@ -187,6 +188,7 @@ async function handleCommand(input) {
     }
     await loadTheme();
     document.getElementById('search').value = '';
+    await syncToFile();
     return true;
   }
 
@@ -212,9 +214,9 @@ async function refresh() {
   const totalsEl = document.getElementById('totals');
   const searchEl = document.getElementById('search');
 
-  // Tag cloud mode
+  // Tag cloud mode (optionally filtered by include/exclude/dates from the rest of the search)
   if (parsed.mode === 'tagcloud') {
-    await showTagCloud(db, outputEl, totalsEl, searchEl, parsed.after, parsed.before);
+    await showTagCloud(db, outputEl, totalsEl, searchEl, parsed);
     return;
   }
 
@@ -290,8 +292,8 @@ async function refresh() {
   renderMermaidBlocks(outputEl);
 }
 
-// --- Setup CRUD (read-write controls, create form, edit/delete, JSON open/save) ---
-setupCrud(db, isReadOnly, refresh);
+// --- Setup CRUD (read-write controls, create form, edit/delete, JSON open/save, FSA attach) ---
+const { syncToFile } = setupCrud(db, isReadOnly, refresh);
 
 // --- Markdown viewer: intercept clicks on .md links ---
 document.addEventListener('click', async (e) => {

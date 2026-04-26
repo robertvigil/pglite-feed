@@ -1,23 +1,27 @@
 // Search parsing, clause building, and tag cloud
 
 // Parses search input into mode + terms + date filters:
-//   empty       → mode: 'default' (show non-tagged entries only)
-//   "#"         → mode: 'tagcloud' (show tag cloud with counts)
-//   "#git"      → mode: 'search', terms parsed normally
-//   "chmod"     → mode: 'search', terms parsed normally
-//   "git #"     → mode: 'search', lone "#" stripped
-//   "after:2026-04-01"           → date filter
-//   "after:2026-04-01 before:2026-04-14 #git"  → date range + tag search
+//   empty                         → mode: 'default' (show non-tagged entries only)
+//   "#"                           → mode: 'tagcloud' (show full tag cloud with counts)
+//   "# git"                       → mode: 'tagcloud' filtered by "git"
+//   "# git -intro after:..."      → mode: 'tagcloud' filtered by include/exclude/dates
+//   "#git"                        → mode: 'search', terms parsed normally
+//   "chmod"                       → mode: 'search', terms parsed normally
+//   "git #"                       → mode: 'search', lone "#" stripped (only leading # is a mode flag)
+//   "after:2026-04-01"            → date filter
+//   "after:2026-04-01 before:... #git"  → date range + tag search
 export function parseSearch(query) {
   const raw = query.trim();
 
   if (!raw) return { mode: 'default', include: [], exclude: [], after: null, before: null };
-  if (raw === '#') return { mode: 'tagcloud', include: [], exclude: [], after: null, before: null };
 
-  // Strip single-character tokens
-  const tokens = raw.split(/\s+/).filter(t => t && t.length > 1);
+  // Detect leading "#" as a mode flag BEFORE the single-char filter strips it.
+  const rawTokens = raw.split(/\s+/).filter(Boolean);
+  const isTagCloud = rawTokens[0] === '#';
+  const restRaw = isTagCloud ? rawTokens.slice(1) : rawTokens;
 
-  if (tokens.length === 0) return { mode: 'default', include: [], exclude: [], after: null, before: null };
+  // Strip single-character tokens (noise like lone "a", "i", trailing "#")
+  const tokens = restRaw.filter(t => t.length > 1);
 
   const include = [];
   const exclude = [];
@@ -35,6 +39,12 @@ export function parseSearch(query) {
       include.push(t);
     }
   }
+
+  if (isTagCloud) {
+    return { mode: 'tagcloud', include, exclude, after, before };
+  }
+
+  if (tokens.length === 0) return { mode: 'default', include: [], exclude: [], after: null, before: null };
 
   // If only date terms and no text terms, still show all entries (not just non-tagged)
   const hasTextTerms = include.length > 0 || exclude.length > 0;
@@ -79,29 +89,26 @@ export function buildSearchClauses({ include, exclude, after, before }, startIdx
   };
 }
 
-export async function showTagCloud(db, outputEl, totalsEl, searchEl, after, before) {
-  // Build optional date filter for tag cloud
-  let dateWhere = '';
-  const dateParams = [];
-  if (after) { dateWhere += ' AND feed_date >= $1::date'; dateParams.push(after); }
-  if (before) {
-    dateWhere += ` AND feed_date <= $${dateParams.length + 1}::date`;
-    dateParams.push(before);
-  }
+export async function showTagCloud(db, outputEl, totalsEl, searchEl, parsed) {
+  // Scope the tag cloud to entries matching the same filters as a regular search:
+  // include / exclude / after / before. Reuses buildSearchClauses for symmetry.
+  const search = buildSearchClauses(parsed, 1);
 
   const result = await db.query(`
     SELECT feed_content
     FROM feed
-    WHERE 1=1 ${dateWhere};
-  `, dateParams);
+    WHERE 1=1 ${search.where};
+  `, search.params);
 
   const tagCounts = {};
   for (const row of result.rows) {
     const tags = row.feed_content.match(/#\w+/g);
     if (tags) {
-      for (const tag of tags) {
-        const lower = tag.toLowerCase();
-        tagCounts[lower] = (tagCounts[lower] || 0) + 1;
+      // Dedupe per-row so the count reflects "entries tagged with X",
+      // not "total occurrences of #X" — a row with "#demo #demo" counts once.
+      const unique = new Set(tags.map(t => t.toLowerCase()));
+      for (const tag of unique) {
+        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
       }
     }
   }

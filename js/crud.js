@@ -491,4 +491,6 @@ export function setupCrud(db, isReadOnly, refreshFn) {
       }
     })();
   }
+
+  return { syncToFile };
 }

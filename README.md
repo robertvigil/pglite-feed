@@ -51,10 +51,12 @@ Page load
 | Search input | Behavior |
 |---|---|
 | *(empty)* | Show entries with NO hashtags, plus any tagged `#pin` |
-| `#` | Show tag cloud with counts |
+| `#` | Show full tag cloud with counts |
+| `# git` | Tag cloud filtered to entries matching `git` (counts reflect filtered subset) |
+| `# #git -intro after:2026-04-01` | Tag cloud filtered by include/exclude/date — same syntax as regular search |
 | `#git` | Normal search — entries containing "#git" |
 | `git` | Normal search — entries containing "git" (tagged or not) |
-| `git #` | Strip the lone `#`, treat as just `git` |
+| `git #` | Strip the lone `#`, treat as just `git` (only **leading** `#` is a mode flag) |
 | `chmod #permissions` | Normal AND search — entries with both |
 | `-#git` | Normal exclude — entries NOT containing "#git" |
 | `after:2026-04-01` | Entries on or after this date |
