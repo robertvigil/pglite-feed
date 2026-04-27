@@ -48,38 +48,16 @@ Page load
 
 ## Search behavior
 
+A four-row teaser:
+
 | Search input | Behavior |
 |---|---|
-| *(empty)* | Show entries with NO hashtags, plus any tagged `#pin` |
-| `#` | Show full tag cloud with counts |
-| `# git` | Tag cloud filtered to entries matching `git` (counts reflect filtered subset) |
-| `# #git -intro after:2026-04-01` | Tag cloud filtered by include/exclude/date — same syntax as regular search |
-| `#git` | Normal search — entries containing "#git" |
-| `git` | Normal search — entries containing "git" (tagged or not) |
-| `git #` | Strip the lone `#`, treat as just `git` (only **leading** `#` is a mode flag) |
-| `chmod #permissions` | Normal AND search — entries with both |
-| `-#git` | Normal exclude — entries NOT containing "#git" |
-| `#pending\|#mastered` | OR alternation — entries matching either tag (no spaces around `\|`) |
-| `-#pending\|#mastered` | Exclude — entries matching neither |
-| `after:2026-04-01` | Entries on or after this date |
-| `before:2026-04-14` | Entries on or before this date |
-| `after:2026-04-01 before:2026-04-14 #git` | Date range + tag search combined |
+| *(empty)* | Default view — entries with no hashtags, plus any tagged `#pin` |
+| `word -other #tag` | AND match with exclusion and hashtag filtering |
+| `#a\|#b` | OR alternation within a token (no spaces around `\|`) |
+| `#` / `# term` | Full or filtered tag cloud with counts |
 
-### Linkable searches
-
-Content can include clickable links that trigger searches using URL-encoded `?search=` parameters:
-
-```
-[files](?search=%23files)                          → searches for #files
-[chmod](?search=chmod)                              → searches for chmod
-[ssh tunnel](?search=ssh%20-L)                     → searches for ssh -L
-[april entries](?search=after%3A2026-04-01)        → searches for after:2026-04-01
-[april git](?search=after%3A2026-04-01%20%23git)   → searches for after:2026-04-01 #git
-```
-
-These URLs can be shared directly — the recipient loads the app with the search pre-filled.
-
-This lets non-tagged "index" entries link to tagged content without being hidden by the default view filter.
+Date filters (`after:`, `before:`), URL-parameter pre-fill (`?search=...`), and the full encoding table all live in the in-app reference: **[assets/help.md](assets/help.md)**. That's also what gets rendered when you click the help link inside the app.
 
 ## Schema
 

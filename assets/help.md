@@ -135,19 +135,37 @@ If the file vanishes mid-session (drive unmounted, file deleted, permission revo
 
 ## URL parameters
 
-`?search=<encoded>` pre-fills the search bar on load. Lets content link to searches:
+`?search=<encoded>` pre-fills the search bar on load. Lets content link to searches.
+
+### Encoding cheat sheet
+
+| Character | Encoded | Notes |
+|---|---|---|
+| `#` | `%23` | **Must** be encoded — raw `#` truncates the URL at the fragment. |
+| ` ` (space) | `%20` | **Must** be encoded — raw space breaks address-bar parsing. |
+| `:` | `%3A` | Used in `after:` / `before:`. |
+| `\|` | `%7C` | Optional in modern browsers (raw `\|` usually works), but encoding is the safe form. |
+| `-` | `-` | Unreserved — never needs encoding. |
+
+> The encoded `%23` doesn't trigger the "no hashtags" default-view filter — that regex matches literal `#[a-zA-Z]`, not the URL-encoded form. So `?search=%23pin` is a valid way to land on pinned content via URL.
+
+### Examples
 
 ```
-[files](?search=%23files)                          → searches for #files
-[chmod](?search=chmod)                              → searches for chmod
-[ssh tunnel](?search=ssh%20-L)                     → searches for ssh -L
-[april entries](?search=after%3A2026-04-01)        → searches for after:2026-04-01
-[git tags](?search=%23%20%23git)                   → tag cloud filtered to #git entries
+[files](?search=%23files)                          → #files                      (single tag)
+[chmod](?search=chmod)                              → chmod                       (substring)
+[ssh tunnel](?search=ssh%20-L)                     → ssh -L                      (AND)
+[exclude mastered](?search=-%23mastered)           → -#mastered                  (NOT)
+[pending or mastered](?search=%23pending%7C%23mastered) → #pending|#mastered     (OR)
+[neither](?search=-%23pending%7C%23mastered)       → -#pending|#mastered         (NOT both)
+[combo](?search=%23pending%7C%23mastered%20%23f1)  → #pending|#mastered #f1      (OR + AND)
+[april entries](?search=after%3A2026-04-01)        → after:2026-04-01            (date)
+[git tags](?search=%23%20%23git)                   → # #git                      (filtered tag cloud)
 ```
 
-These URLs can be shared directly — recipients open the app with the search pre-filled.
+These URLs can be shared directly — recipients open the app with the search pre-filled. Term order doesn't matter; the parser sorts include/exclude/dates into buckets regardless of position.
 
-`%23` is `#`, `%20` is space, `%3A` is `:`. The encoded `%23` doesn't trigger the "no hashtags" filter (because the regex matches literal `#[a-zA-Z]`, not the URL-encoded form).
+To generate one programmatically: `encodeURIComponent(searchString)` in JavaScript, `urllib.parse.quote(s)` in Python.
 
 ## Content formatting
 
@@ -245,4 +263,4 @@ Strikethrough: ~~deprecated text~~. **Bold**, *italic*, `inline code` all work.
 
 - [GitHub repo](https://github.com/robertvigil/pglite-feed)
 - [PGlite documentation](https://pglite.dev/)
-- [Live demo](https://robertvigil.com/feed/)
+- [Live demo](https://robertvigil.com/public/feed/)
