@@ -59,6 +59,8 @@ Page load
 | `git #` | Strip the lone `#`, treat as just `git` (only **leading** `#` is a mode flag) |
 | `chmod #permissions` | Normal AND search — entries with both |
 | `-#git` | Normal exclude — entries NOT containing "#git" |
+| `#pending\|#mastered` | OR alternation — entries matching either tag (no spaces around `\|`) |
+| `-#pending\|#mastered` | Exclude — entries matching neither |
 | `after:2026-04-01` | Entries on or after this date |
 | `before:2026-04-14` | Entries on or before this date |
 | `after:2026-04-01 before:2026-04-14 #git` | Date range + tag search combined |

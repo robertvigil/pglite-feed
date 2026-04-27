@@ -71,16 +71,26 @@ export function buildSearchClauses({ include, exclude, after, before }, startIdx
     i++;
   }
 
-  // Text filters
+  // Text filters. A "term" can be pipe-separated alternatives — "#a|#b" means
+  // (matches a OR matches b). Excludes apply NOT to the whole OR group, so
+  // "-#a|#b" excludes entries matching either.
+  function termSql(term) {
+    const parts = term.split('|').filter(Boolean);
+    if (parts.length === 0) return null;
+    const subs = parts.map(part => {
+      params.push(`%${part}%`);
+      return `feed_content ILIKE $${i++}`;
+    });
+    return parts.length > 1 ? `(${subs.join(' OR ')})` : subs[0];
+  }
+
   for (const term of include) {
-    clauses.push(`feed_content ILIKE $${i}`);
-    params.push(`%${term}%`);
-    i++;
+    const sql = termSql(term);
+    if (sql) clauses.push(sql);
   }
   for (const term of exclude) {
-    clauses.push(`feed_content NOT ILIKE $${i}`);
-    params.push(`%${term}%`);
-    i++;
+    const sql = termSql(term);
+    if (sql) clauses.push(`NOT ${sql}`);
   }
 
   return {

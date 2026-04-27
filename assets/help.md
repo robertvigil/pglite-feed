@@ -36,6 +36,7 @@ Search runs as you type (debounced via the `input` event); commands and the filt
 | `word` | AND substring match across `feed_content`. |
 | `word1 word2` | AND match — both terms must appear. |
 | `-word` | Exclude — entries NOT containing the term. |
+| `#a\|#b` | OR alternation within one token — entries matching either. No spaces around `\|`. Combines with AND/exclude/dates as you'd expect. |
 | `#tag` | Find entries containing the literal `#tag`. |
 | `#` | Show **full tag cloud** with counts, sorted by frequency. |
 | `# term1 term2` | Show **filtered tag cloud** — counts computed only over entries matching `term1 AND term2`. Any regular search syntax (`-`, `after:`, `before:`, `#tag`) works after the leading `#`. |
