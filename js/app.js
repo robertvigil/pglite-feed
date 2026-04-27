@@ -9,6 +9,9 @@ import { parseSearch, buildSearchClauses, showTagCloud } from './search.js';
 import { setupCrud } from './crud.js';
 
 // --- Configure marked ---
+// breaks: true → single newlines render as <br>, matching the textarea-style editing UX
+// (without this, a soft newline collapses to a space, hiding line breaks in the rendered list)
+marked.use({ breaks: true });
 marked.use(gfmHeadingId());
 marked.use(markedKatex({ throwOnError: false }));
 
