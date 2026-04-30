@@ -33,7 +33,7 @@ Page load
 - **Hashtag categories** — use `#tags` in content for categories (e.g., `#links`, `#notes`), then search for `#tag` to filter.
 - **Smart default view** — empty search shows entries without hashtags, plus any entry tagged `#pin`. Tagged reference data stays hidden until you search for it. Use `#pin` to force important tagged entries onto the front page.
 - **Pin to front page** — tag any entry with `#pin` and it appears on the default view regardless of other tags (e.g., `server setup guide #sysadmin #pin`).
-- **Tag cloud** — type `#` in the search bar to see all hashtags with counts. Click any tag to search for it.
+- **Tag cloud** — type `#` in the search bar to see all hashtags with counts and percentages. Click any tag to search for it.
 - **Search via URL** — `?search=%23git` pre-fills the search bar. Enables clickable links in content that trigger searches.
 - **Clear button (×)** — clears the search and returns to the default view. Acts as a "home" button.
 - **Inline CRUD** — create (✚), edit (✎), and delete (✕) entries directly. Always visible in read-write mode.
@@ -55,7 +55,7 @@ A four-row teaser:
 | *(empty)* | Default view — entries with no hashtags, plus any tagged `#pin` |
 | `word -other #tag` | AND match with exclusion and hashtag filtering |
 | `#a\|#b` | OR alternation within a token (no spaces around `\|`) |
-| `#` / `# term` | Full or filtered tag cloud with counts |
+| `#` / `# term` | Full or filtered tag cloud with counts and percentages |
 
 Date filters (`after:`, `before:`), URL-parameter pre-fill (`?search=...`), and the full encoding table all live in the in-app reference: **[assets/help.md](assets/help.md)**. That's also what gets rendered when you click the help link inside the app.
 

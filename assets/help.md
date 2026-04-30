@@ -38,7 +38,7 @@ Search runs as you type (debounced via the `input` event); commands and the filt
 | `-word` | Exclude — entries NOT containing the term. |
 | `#a\|#b` | OR alternation within one token — entries matching either. No spaces around `\|`. Combines with AND/exclude/dates as you'd expect. |
 | `#tag` | Find entries containing the literal `#tag`. |
-| `#` | Show **full tag cloud** with counts, sorted by frequency. |
+| `#` | Show **full tag cloud** with counts and percentages, sorted by frequency. Percentages are each tag's share of matched rows; `<1%` for vanishingly rare ones. |
 | `# term1 term2` | Show **filtered tag cloud** — counts computed only over entries matching `term1 AND term2`. Any regular search syntax (`-`, `after:`, `before:`, `#tag`) works after the leading `#`. |
 | `# #git` | Tag cloud of entries containing `#git`. Useful for "what tags co-occur with this one?" |
 | `git #` | Trailing/middle `#` is stripped — only **leading** `#` is a mode flag. Treated as just `git`. |

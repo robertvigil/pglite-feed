@@ -104,11 +104,17 @@ export async function showTagCloud(db, outputEl, totalsEl, searchEl, parsed) {
   // include / exclude / after / before. Reuses buildSearchClauses for symmetry.
   const search = buildSearchClauses(parsed, 1);
 
-  const result = await db.query(`
-    SELECT feed_content
-    FROM feed
-    WHERE 1=1 ${search.where};
-  `, search.params);
+  const [result, grandResult] = await Promise.all([
+    db.query(`
+      SELECT feed_content
+      FROM feed
+      WHERE 1=1 ${search.where};
+    `, search.params),
+    db.query('SELECT COUNT(*) AS n FROM feed;'),
+  ]);
+
+  const matched = result.rows.length;
+  const grandTotal = Number(grandResult.rows[0].n);
 
   const tagCounts = {};
   for (const row of result.rows) {
@@ -125,8 +131,10 @@ export async function showTagCloud(db, outputEl, totalsEl, searchEl, parsed) {
 
   const sorted = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
 
+  // Match regular-search totals layout: "#: matched / total" + "tags: N"
   totalsEl.style.display = 'flex';
   totalsEl.innerHTML = `
+    <div class="item"><span class="label">#:</span><span class="value">${matched} / ${grandTotal}</span></div>
     <div class="item"><span class="label">tags:</span><span class="value">${sorted.length}</span></div>
   `;
 
@@ -135,9 +143,17 @@ export async function showTagCloud(db, outputEl, totalsEl, searchEl, parsed) {
     return;
   }
 
+  // Each tag rendered as "#tag (count pct%)". Floor-protect: anything that
+  // would round to 0% renders as "<1%" so "(1 0%)" doesn't look like a bug.
+  function pctLabel(count) {
+    if (matched === 0) return '0%';
+    const raw = (count / matched) * 100;
+    return raw >= 1 ? `${Math.round(raw)}%` : '<1%';
+  }
+
   outputEl.innerHTML = '<p style="line-height:2">' +
     sorted.map(([tag, count]) =>
-      `<span style="color:var(--accent);cursor:pointer" class="tag-link" data-tag="${tag}">${tag}</span> <span style="color:#666">(${count})</span>`
+      `<span style="color:var(--accent);cursor:pointer" class="tag-link" data-tag="${tag}">${tag}</span> <span style="color:#666">(${count} <span class="tag-pct">${pctLabel(count)}</span>)</span>`
     ).join('&nbsp;&nbsp; ') +
     '</p>';
 
