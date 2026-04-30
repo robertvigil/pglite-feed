@@ -198,8 +198,12 @@ async function handleCommand(input) {
   return false;
 }
 
-// --- Show last updated timestamp ---
+// --- Show last updated timestamp (read-only mode only) ---
+// In read-write mode this would just leak a stale `content_loaded` value
+// from a past read-only session — it has no meaning when the user manages
+// their own DB locally.
 async function showLastUpdated() {
+  if (!isReadOnly) return;
   const result = await db.query("SELECT value FROM config WHERE key = 'content_loaded'");
   const el = document.getElementById('last-updated');
   if (result.rows[0]?.value) {
