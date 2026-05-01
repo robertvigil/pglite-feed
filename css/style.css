@@ -76,7 +76,7 @@ tr:hover { background: #222; }
 #output > table > tbody > tr > td.actions { display: inline; padding-left: 10px; }
 td a { color: var(--accent); }
 .tag-link:hover { text-decoration: underline; }
-.tag-pct { font-style: italic; color: #999; }
+.tag-pct { color: #777; }
 
 /* Totals panel */
 .totals {
