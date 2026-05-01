@@ -48,6 +48,9 @@ const params = new URLSearchParams(location.search);
 
 // --- Init PGlite ---
 const db = new PGlite('idb://feed-v3');
+// Expose db to DevTools console for ad-hoc queries — only when the page is
+// loaded with ?debug. Avoids widening the attack surface on normal loads.
+if (params.has('debug')) window.db = db;
 
 await db.exec(`
   CREATE TABLE IF NOT EXISTS feed (
