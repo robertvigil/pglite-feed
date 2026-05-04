@@ -42,13 +42,56 @@ Search runs as you type (debounced via the `input` event); commands and the filt
 | `# term1 term2` | Show **filtered tag cloud** — counts computed only over entries matching `term1 AND term2`. Any regular search syntax (`-`, `after:`, `before:`, `#tag`) works after the leading `#`. |
 | `# #git` | Tag cloud of entries containing `#git`. Useful for "what tags co-occur with this one?" |
 | `git #` | Trailing/middle `#` is stripped — only **leading** `#` is a mode flag. Treated as just `git`. |
-| `after:YYYY-MM-DD` | Entries on or after this date. |
-| `before:YYYY-MM-DD` | Entries on or before this date. |
+| `after:YYYY-MM-DD` | Entries on or after this date (ISO format). |
+| `before:YYYY-MM-DD` | Entries on or before this date (ISO format). |
+| `after:today` / `before:tomorrow` | Symbolic date names — see table below. Resolved at parse time, so `?search=after:today` URLs are evergreen. |
+| `after:-7d` / `before:+30d` | Relative offsets from today. Format: `[+-]<int><unit>` where unit is `d`, `w`, `m`, `y`. |
 | `after:... before:... #git` | All filters combine with AND. |
 | `-#git` | Exclude entries containing `#git`. |
 | `#pin` | The pin override — any entry tagged `#pin` shows on the default view regardless of other tags. |
 
 Single-character search terms (`a`, `i`, etc.) are stripped as noise — too broad to be useful. The lone `#` mode flag is detected before this rule applies.
+
+### Symbolic dates and relative offsets
+
+`after:` and `before:` accept three input forms — ISO date, symbolic name, or relative offset. Resolution happens *every time the search runs*, so a URL like `?search=after:today` always means "today as of right now" — perfect for evergreen calendar links.
+
+**Symbolic names:**
+
+| Name | Resolves to |
+|---|---|
+| `today` | current date |
+| `yesterday` | -1 day |
+| `tomorrow` | +1 day |
+| `week-start` | most recent Monday |
+| `week-end` | week-start + 6 days (Sunday) |
+| `month-start` | 1st of current month |
+| `month-end` | last day of current month |
+| `year-start` | January 1 of current year |
+| `year-end` | December 31 of current year |
+
+**Relative offsets:** `[+-]<integer><unit>`, where unit is one of:
+
+| Unit | Meaning |
+|---|---|
+| `d` | days (`+7d`, `-30d`) |
+| `w` | weeks (`+2w`, `-4w`) |
+| `m` | months (`+1m`, `-3m`) — clamps to last valid day of target month, so `Jan 31 + 1m` → `Feb 28`/`29` (not `Mar 3`) |
+| `y` | years (`+1y`, `-2y`) — clamps leap-year edges, so `Feb 29 + 1y` → `Feb 28` (not `Mar 1`) |
+
+**Example calendar URLs (evergreen):**
+
+```
+[Today](?search=after:today%20before:today)
+[This week](?search=after:week-start%20before:week-end)
+[This month](?search=after:month-start%20before:month-end)
+[Upcoming 30 days](?search=after:today%20before:%2B30d)
+[Past week](?search=after:-7d%20before:today)
+```
+
+(The `%2B` in `+30d` is the URL-encoded `+`, since raw `+` in URLs decodes to a space.)
+
+Invalid date values (e.g., `after:notadate`) silently drop the filter rather than erroring — your search still runs, just without the date constraint.
 
 ### Clicking tags in the cloud
 
@@ -146,6 +189,7 @@ If the file vanishes mid-session (drive unmounted, file deleted, permission revo
 | `:` | `%3A` | Used in `after:` / `before:`. |
 | `\|` | `%7C` | Optional in modern browsers (raw `\|` usually works), but encoding is the safe form. |
 | `-` | `-` | Unreserved — never needs encoding. |
+| `+` | `%2B` | **Must** be encoded — raw `+` in URLs decodes to a space. Used in relative offsets like `+30d`. |
 
 > The encoded `%23` doesn't trigger the "no hashtags" default-view filter — that regex matches literal `#[a-zA-Z]`, not the URL-encoded form. So `?search=%23pin` is a valid way to land on pinned content via URL.
 

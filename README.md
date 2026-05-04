@@ -28,7 +28,7 @@ Page load
 
 ## Features
 
-- **Date filtering** — use `after:2026-04-01` and `before:2026-04-14` in the search bar for date ranges.
+- **Date filtering** — use `after:2026-04-01` and `before:2026-04-14` in the search bar for date ranges. Symbolic dates (`after:today`, `before:week-end`) and relative offsets (`+7d`, `-30d`) are supported and resolve at parse time, making `?search=after:today` URLs evergreen.
 - **Search** — multi-word AND with exclusion: `"pglite feed"` matches both terms, `"-exclude"` filters out a term.
 - **Hashtag categories** — use `#tags` in content for categories (e.g., `#links`, `#notes`), then search for `#tag` to filter.
 - **Smart default view** — empty search shows entries without hashtags, plus any entry tagged `#pin`. Tagged reference data stays hidden until you search for it. Use `#pin` to force important tagged entries onto the front page.

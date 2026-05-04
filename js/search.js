@@ -1,5 +1,94 @@
 // Search parsing, clause building, and tag cloud
 
+// --- Date value resolution for after:/before: ---
+// Accepts:
+//   ISO date          "2026-04-01"
+//   Symbolic name     today | yesterday | tomorrow
+//                     week-start | week-end          (week starts Monday, ends Sunday)
+//                     month-start | month-end
+//                     year-start | year-end
+//   Relative offset   [+-]<int><unit>  where unit ∈ {d, w, m, y}
+//                     e.g. +7d, -30d, +2w, -3m, +1y
+// Resolution happens at parse time, so URLs like ?search=after:today are evergreen.
+// Returns "YYYY-MM-DD" using LOCAL-date components (not UTC) — toISOString would
+// shift overnight for users east/west of UTC. Returns null for unrecognized input.
+function resolveDate(value) {
+  // 1. plain ISO date — pass through unchanged
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  // 2. symbolic names
+  const today = new Date();
+  const symbols = {
+    'today':       () => today,
+    'yesterday':   () => addDays(today, -1),
+    'tomorrow':    () => addDays(today, 1),
+    'week-start':  () => mondayOf(today),
+    'week-end':    () => addDays(mondayOf(today), 6),
+    'month-start': () => new Date(today.getFullYear(), today.getMonth(), 1),
+    'month-end':   () => new Date(today.getFullYear(), today.getMonth() + 1, 0),
+    'year-start':  () => new Date(today.getFullYear(), 0, 1),
+    'year-end':    () => new Date(today.getFullYear(), 11, 31),
+  };
+  if (symbols[value]) return iso(symbols[value]());
+
+  // 3. relative offsets:  +7d  -30d  +2w  -3m  +1y
+  const m = value.match(/^([+-]\d+)([dwmy])$/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    const r = new Date(today);
+    if      (m[2] === 'd') r.setDate(r.getDate() + n);
+    else if (m[2] === 'w') r.setDate(r.getDate() + n * 7);
+    else if (m[2] === 'm') addMonthsClamped(r, n);
+    else if (m[2] === 'y') addYearsClamped(r, n);
+    return iso(r);
+  }
+
+  return null;
+}
+
+function addDays(d, n) {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+// week-start = Monday. getDay() returns 0=Sun..6=Sat; treat 0 as 7 so Sun is end-of-week.
+function mondayOf(d) {
+  const r = new Date(d);
+  const dow = r.getDay() || 7; // 1=Mon..7=Sun
+  r.setDate(r.getDate() - (dow - 1));
+  return r;
+}
+
+// Standard convention: clamp to last valid day of target month.
+// "Jan 31 + 1m" → Feb 28 (or Feb 29 in a leap year), not Mar 3.
+function addMonthsClamped(d, n) {
+  const targetDay = d.getDate();
+  const tmp = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  const lastDay = new Date(tmp.getFullYear(), tmp.getMonth() + 1, 0).getDate();
+  d.setFullYear(tmp.getFullYear(), tmp.getMonth(), Math.min(targetDay, lastDay));
+}
+
+// Standard convention: clamp leap-year edge case.
+// "Feb 29 (leap year) + 1y" → Feb 28 (non-leap), not Mar 1.
+function addYearsClamped(d, n) {
+  const targetYear = d.getFullYear() + n;
+  const targetMonth = d.getMonth();
+  const targetDay = d.getDate();
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  d.setFullYear(targetYear, targetMonth, Math.min(targetDay, lastDay));
+}
+
+// Format a Date as "YYYY-MM-DD" using local components.
+// Avoids toISOString's UTC conversion, which would shift the date overnight
+// for users not on UTC (a real bug we've seen elsewhere in the codebase).
+function iso(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // Parses search input into mode + terms + date filters:
 //   empty                         → mode: 'default' (show non-tagged entries only)
 //   "#"                           → mode: 'tagcloud' (show full tag cloud with counts)
@@ -8,7 +97,8 @@
 //   "#git"                        → mode: 'search', terms parsed normally
 //   "chmod"                       → mode: 'search', terms parsed normally
 //   "git #"                       → mode: 'search', lone "#" stripped (only leading # is a mode flag)
-//   "after:2026-04-01"            → date filter
+//   "after:2026-04-01"            → date filter (ISO)
+//   "after:today before:+7d"      → date filter (symbolic / relative — see resolveDate)
 //   "after:2026-04-01 before:... #git"  → date range + tag search
 export function parseSearch(query) {
   const raw = query.trim();
@@ -30,9 +120,12 @@ export function parseSearch(query) {
 
   for (const t of tokens) {
     if (t.startsWith('after:') && t.length > 6) {
-      after = t.substring(6);
+      // resolveDate accepts ISO dates, symbolic names ("today", "week-start", ...),
+      // and relative offsets ("+7d", "-3m"). Returns null for unrecognized input,
+      // in which case the filter silently drops (no SQL error, no result change).
+      after = resolveDate(t.substring(6));
     } else if (t.startsWith('before:') && t.length > 7) {
-      before = t.substring(7);
+      before = resolveDate(t.substring(7));
     } else if (t.startsWith('-') && t.length > 1) {
       exclude.push(t.substring(1));
     } else {
