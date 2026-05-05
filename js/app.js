@@ -349,6 +349,40 @@ function goHome() {
 document.getElementById('clear-search').addEventListener('click', goHome);
 document.getElementById('home-link').addEventListener('click', goHome);
 
+// --- Copy shareable search URL ---
+// Show the 📋 button only when the search is meaningful to share — non-empty
+// and not a "!" command (commands don't auto-fire from URL pre-fill, so a
+// "?search=!theme amber" link would just confuse a recipient).
+const copyBtn = document.getElementById('copy-search');
+const searchInput = document.getElementById('search');
+
+function updateCopyVisibility() {
+  const v = searchInput.value.trim();
+  copyBtn.style.display = (v && !v.startsWith('!')) ? '' : 'none';
+}
+searchInput.addEventListener('input', updateCopyVisibility);
+updateCopyVisibility();
+
+copyBtn.addEventListener('click', async () => {
+  const value = searchInput.value.trim();
+  if (!value || value.startsWith('!')) return;
+  // Build from origin+pathname (not new URL(location)) so we don't propagate
+  // unrelated params like ?debug into shared links.
+  const url = new URL(location.origin + location.pathname);
+  url.searchParams.set('search', value);
+  try {
+    await navigator.clipboard.writeText(url.toString());
+    copyBtn.textContent = '✓';
+    copyBtn.classList.add('copied');
+    setTimeout(() => {
+      copyBtn.textContent = '📋';
+      copyBtn.classList.remove('copied');
+    }, 1500);
+  } catch (err) {
+    alert('Could not copy to clipboard: ' + err.message);
+  }
+});
+
 // --- Wire up search (with command interception in read-write mode) ---
 document.getElementById('search').addEventListener('input', async (e) => {
   const val = e.target.value.trim();

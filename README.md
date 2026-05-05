@@ -57,6 +57,8 @@ A four-row teaser:
 | `#a\|#b` | OR alternation within a token (no spaces around `\|`) |
 | `#` / `# term` | Full or filtered tag cloud with counts and percentages |
 
+A **📋 button** appears in the search bar when the query is shareable — clicking it copies the corresponding `?search=...` URL to your clipboard, properly encoded.
+
 Date filters (`after:`, `before:`), URL-parameter pre-fill (`?search=...`), and the full encoding table all live in the in-app reference: **[assets/help.md](assets/help.md)**. That's also what gets rendered when you click the help link inside the app.
 
 ## Schema

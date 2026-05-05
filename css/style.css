@@ -36,7 +36,7 @@ h1 { color: var(--accent); margin: 0 0 8px; font-size: 1.2em; }
 /* Search bar */
 .search-bar { margin-bottom: 10px; position: relative; }
 .search-bar input {
-  width: 100%; padding: 7px 32px 7px 10px; font-size: 14px;
+  width: 100%; padding: 7px 60px 7px 10px; font-size: 14px;
   background: #222; color: var(--accent); border: 1px solid var(--accent);
   border-radius: 3px; font-family: inherit;
 }
@@ -47,6 +47,14 @@ h1 { color: var(--accent); margin: 0 0 8px; font-size: 1.2em; }
   cursor: pointer; padding: 0 4px; line-height: 1;
 }
 #clear-search:hover { color: #f66; }
+#copy-search {
+  position: absolute; right: 32px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: #555; font-size: 14px;
+  cursor: pointer; padding: 0 4px; line-height: 1;
+  user-select: none;
+}
+#copy-search:hover { color: var(--accent); }
+#copy-search.copied { color: var(--accent); }
 
 /* Results table — desktop grid (commented out, using card layout instead)
 table {

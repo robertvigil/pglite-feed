@@ -211,6 +211,17 @@ These URLs can be shared directly — recipients open the app with the search pr
 
 To generate one programmatically: `encodeURIComponent(searchString)` in JavaScript, `urllib.parse.quote(s)` in Python.
 
+### Copy a search as a shareable URL (📋 button)
+
+Easier than encoding by hand: type your query into the search bar, then click the **📋** icon that appears between the search input and the × clear button. The full `?search=...` URL is copied to your clipboard, properly encoded for `#`, spaces, `+`, `:`, `|`, and the rest. Icon briefly flashes to ✓ as confirmation.
+
+The button is **hidden when:**
+
+- The search bar is empty (nothing to share).
+- The search starts with `!` (commands don't auto-fire from URL pre-fill, so the link would be useless).
+
+Symbolic dates and relative offsets (`after:today`, `before:+30d`) survive copy-as-URL unchanged — they get encoded literally and resolve against the recipient's "today" when the link is opened. That's why these URLs stay evergreen.
+
 ## Content formatting
 
 `feed_content` is rendered through `marked` with a few extensions, then a regex pass adds bare-URL auto-linking.
