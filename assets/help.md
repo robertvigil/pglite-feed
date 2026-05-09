@@ -209,6 +209,8 @@ If the file vanishes mid-session (drive unmounted, file deleted, permission revo
 
 These URLs can be shared directly — recipients open the app with the search pre-filled. Term order doesn't matter; the parser sorts include/exclude/dates into buckets regardless of position.
 
+**Clicking a `?search=...` link inside the app updates in place — no page reload.** The search bar re-fills, the URL bar updates, the query fires. Back/forward buttons walk through your search history. Modifier-click (Cmd/Ctrl/Shift/middle-click) still opens in a new tab as expected. URLs entered via the address bar or shared from elsewhere still load fresh — that's required for the page to load at all from outside.
+
 To generate one programmatically: `encodeURIComponent(searchString)` in JavaScript, `urllib.parse.quote(s)` in Python.
 
 ### Copy a search as a shareable URL (📋 button)

@@ -336,6 +336,46 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+// --- Intercept clicks on internal ?search=... links to avoid full page reload ---
+// Without this, clicking a search-link in a feed entry triggers a real navigation:
+// the page reloads, the app re-initializes, then reads ?search= and runs the query.
+// Correct behavior but it flashes hard and breaks the SPA feel. With interception,
+// same-origin same-path links with ?search= update the search bar in place, push
+// state, and run the search — no reload. External-entry URLs (typed/pasted into
+// the address bar, shared via chat, opened from another site) still load fresh
+// because they enter via the URL bar, not via this click path.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a');
+  if (!a) return;
+  // Let modifier-click open in new tab / new window — browser's default
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+
+  // Only intercept same-origin same-path links with a ?search= param
+  let url;
+  try { url = new URL(a.href, location.href); } catch { return; }
+  if (url.origin !== location.origin) return;
+  if (url.pathname !== location.pathname) return;
+  if (!url.searchParams.has('search')) return;
+
+  e.preventDefault();
+  const newQuery = url.searchParams.get('search') || '';
+  const searchInput = document.getElementById('search');
+  searchInput.value = newQuery;
+  // Update URL bar without reloading; pushState adds a back-button entry per click
+  history.pushState(null, '', url);
+  // Fire the same input event the user typing would — runs refresh + updates copy-btn visibility
+  searchInput.dispatchEvent(new Event('input'));
+});
+
+// --- Back / forward button restores the prior search state ---
+window.addEventListener('popstate', () => {
+  const params = new URLSearchParams(location.search);
+  const query = params.get('search') || '';
+  const searchInput = document.getElementById('search');
+  searchInput.value = query;
+  searchInput.dispatchEvent(new Event('input'));
+});
+
 // --- Clear search / home ---
 function goHome() {
   document.getElementById('search').value = '';
