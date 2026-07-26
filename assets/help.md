@@ -246,6 +246,16 @@ Any `#word` in content becomes a category tag. Multiple per entry are fine: `chm
 
 Standard markdown: headings, lists, bold/italic, blockquotes, tables, code blocks, links, images, strikethrough, task lists.
 
+### Images
+
+Standard Markdown image syntax. Paths are resolved relative to the **app root**, not to this file — so an image in the `assets/` folder is referenced as `assets/name.png`:
+
+```markdown
+![Mila the pug](assets/mila.png)
+```
+
+![Mila the pug](assets/mila.png)
+
 ### Math (KaTeX)
 
 Inline: `$E = mc^2$` → $E = mc^2$.
