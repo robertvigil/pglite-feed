@@ -1,0 +1,340 @@
+* { box-sizing: border-box; }
+:root { --accent: #0f0; --accent-dim: #1a2a1a; }
+:root[data-theme="green"] { --accent: #0f0; --accent-dim: #1a2a1a; }
+:root[data-theme="amber"] { --accent: #ffb000; --accent-dim: #2a2210; }
+:root[data-theme="white"] { --accent: #e0e0e0; --accent-dim: #1a1a1a; }
+:root[data-theme="plain"] { --accent: #333; --accent-dim: #f0f0f0; }
+:root[data-theme="noir"] { --accent: #38e1ff; --accent-2: #8f8bd8; --accent-dim: rgba(56,225,255,.10); }
+body {
+  font-family: 'Courier New', monospace;
+  background: #111; color: var(--accent);
+  max-width: 900px; margin: 0 auto; padding: 28px 20px 8px;
+}
+/* Plain theme — light background overrides */
+[data-theme="plain"] body { background: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+[data-theme="plain"] .search-bar input,
+[data-theme="plain"] .create-form input,
+[data-theme="plain"] .create-form textarea { background: #fff; border-color: #ccc; }
+[data-theme="plain"] #output > table > tbody > tr { background: #fff; border-color: #ddd; }
+[data-theme="plain"] #output > table > tbody > tr:hover { background: #f5f5f5; }
+[data-theme="plain"] .md-view pre,
+[data-theme="plain"] .md-view code { background: #f5f5f5; }
+[data-theme="plain"] .md-view pre { border-color: #ddd; }
+[data-theme="plain"] .md-view th { background: #f0f0f0; }
+[data-theme="plain"] .md-view tr:hover { background: #f5f5f5; }
+[data-theme="plain"] .md-view h1,
+[data-theme="plain"] .md-view h2,
+[data-theme="plain"] .md-view h3 { border-bottom-color: #ddd; }
+[data-theme="plain"] .md-view img { border-color: #ddd; }
+[data-theme="plain"] .md-view hr { border-top-color: #ddd; }
+[data-theme="plain"] .controls button,
+[data-theme="plain"] .controls .help-link { background: #f5f5f5; border-color: #ccc; }
+[data-theme="plain"] .create-form { background: #fafafa; border-color: #ddd; }
+[data-theme="plain"] tr.editing .edit-row-1 textarea,
+[data-theme="plain"] tr.editing td input { background: #fff; border-color: #ccc; }
+h1 { color: var(--accent); margin: 0 0 8px; font-size: 1.2em; }
+
+/* Search bar */
+.search-bar { margin-bottom: 10px; position: relative; }
+.search-bar input {
+  width: 100%; padding: 7px 60px 7px 10px; font-size: 14px;
+  background: #222; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 3px; font-family: inherit;
+}
+.search-bar input::placeholder { color: #555; }
+#clear-search {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: #555; font-size: 18px;
+  cursor: pointer; padding: 0 4px; line-height: 1;
+}
+#clear-search:hover { color: #f66; }
+#copy-search {
+  position: absolute; right: 32px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: #555; font-size: 14px;
+  cursor: pointer; padding: 0 4px; line-height: 1;
+  user-select: none;
+}
+#copy-search:hover { color: var(--accent); }
+#copy-search.copied { color: var(--accent); }
+
+/* Results table — desktop grid (commented out, using card layout instead)
+table {
+  width: 100%; border-collapse: collapse;
+  background: #1a1a1a; font-size: 0.9em;
+}
+th, td { border: 1px solid #333; padding: 5px 10px; text-align: left; }
+th { background: #222; color: var(--accent); }
+th:first-child, td:first-child { white-space: nowrap; }
+tr:hover { background: #222; }
+*/
+
+/* Results — card layout, scoped to direct children only to preserve nested markdown tables */
+#output > table, #output > table > tbody, #output > table > tbody > tr, #output > table > tbody > tr > td { display: block; width: 100%; }
+#output > table { background: none; }
+#output > table > tbody > tr:first-child th { display: none; }
+#output > table > tbody > tr:has(> th) { display: none; }
+#output > table > tbody > tr {
+  border: 1px solid #333; border-radius: 4px;
+  padding: 6px 8px; margin-bottom: 6px;
+  background: #1a1a1a;
+}
+#output > table > tbody > tr:hover { background: #222; }
+#output > table > tbody > tr > td { border: none; padding: 1px 0; }
+#output > table > tbody > tr > td.content-cell { display: inline; }
+#output > table > tbody > tr > td:nth-child(2) { display: inline-block; width: auto; padding-left: 0; font-size: 0.85em; color: #888; }
+#output > table > tbody > tr > td.actions { display: inline; padding-left: 10px; }
+td a { color: var(--accent); }
+.tag-link:hover { text-decoration: underline; }
+.tag-pct { opacity: 0.4; }
+
+/* Totals panel */
+.totals {
+  margin-top: 15px; padding: 10px 8px;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; display: flex; gap: 15px;
+  font-size: 0.95em;
+}
+.totals .item { display: flex; gap: 4px; }
+.totals .label { color: #888; }
+.totals .value { color: var(--accent); font-weight: bold; }
+
+/* Action bar + create form */
+.action-bar {
+  display: flex; gap: 8px; align-items: center;
+  margin-bottom: 10px;
+}
+.action-bar button {
+  padding: 2px 8px; font-size: 22px;
+  background: transparent; color: #666; border: none;
+  cursor: pointer; font-family: inherit; line-height: 1;
+}
+.action-bar button:hover { color: var(--accent); }
+.attach-name {
+  color: #888; font-size: 0.85em; margin-left: 2px;
+  font-family: inherit;
+}
+.attach-name.granted { color: var(--accent); }
+.attach-name.needs-permission { color: #ffb000; cursor: pointer; }
+.attach-name.needs-permission::after { content: ' ⚠'; }
+.create-form {
+  display: none; flex-direction: column; gap: 8px;
+  margin-bottom: 15px; padding: 10px;
+  background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
+}
+.create-form.open { display: flex; }
+.create-form input {
+  padding: 6px 8px; font-size: 14px;
+  background: #222; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 3px; font-family: inherit;
+}
+.create-form .content-input {
+  width: 100%; padding: 6px 8px; font-size: 14px;
+  background: #222; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 3px; font-family: inherit; resize: vertical;
+}
+.create-form .form-row { display: flex; gap: 8px; align-items: center; }
+.create-form input[type="date"] { width: 150px; }
+.create-form .actions { display: flex; gap: 2px; }
+.create-form button {
+  padding: 2px 8px; font-size: 22px;
+  background: transparent; color: #666; border: none;
+  cursor: pointer; font-family: inherit; line-height: 1;
+}
+.create-form button[type="submit"]:hover { color: var(--accent); }
+.create-form button.cancel:hover { color: #f66; }
+
+/* Inline edit — two-row layout */
+tr.editing { padding: 10px 8px; }
+tr.editing .edit-row-1 { width: 100%; margin-bottom: 6px; }
+tr.editing .edit-row-1 textarea {
+  width: 100%; padding: 3px 5px; font-size: 0.85em;
+  background: #222; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 2px; font-family: inherit; resize: vertical;
+}
+tr.editing .edit-row-2 { display: flex; gap: 8px; align-items: center; padding-left: 0 !important; margin-left: 0; }
+tr.editing .edit-row-2 input[type="date"] { margin-left: 0; }
+tr.editing .edit-row-2 button {
+  padding: 2px 6px; font-size: 18px;
+  background: transparent; color: #666; border: none;
+  cursor: pointer; font-family: inherit; line-height: 1;
+}
+tr.editing .edit-row-2 button.save { color: var(--accent); font-weight: bold; }
+tr.editing .edit-row-2 button.save:hover { color: var(--accent); }
+tr.editing .edit-row-2 button.cancel:hover { color: #f66; }
+
+/* Row action buttons */
+td.actions { white-space: nowrap; text-align: right; width: 1px; }
+td.actions button {
+  padding: 2px 6px; font-size: 18px; margin-left: 2px;
+  background: transparent; color: #666; border: none;
+  cursor: pointer; font-family: inherit; line-height: 1;
+}
+td.actions button:hover { color: var(--accent); }
+td.actions button.delete:hover { color: #f66; }
+td.actions button.save { color: var(--accent); font-weight: bold; }
+td.actions button.cancel:hover { color: #f66; }
+
+/* Inline edit inputs */
+tr.editing td input {
+  width: 100%; padding: 3px 5px; font-size: 0.85em;
+  background: #222; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 2px; font-family: inherit;
+}
+tr.editing td input[type="date"] { width: auto; }
+
+/* Markdown viewer */
+.md-view {
+  line-height: 1.6;
+}
+.md-view p:first-child { margin-top: 0; }
+.md-view p:last-child { margin-bottom: 0; }
+div.md-view {
+  padding: 15px;
+}
+.md-view h1, .md-view h2, .md-view h3 {
+  color: var(--accent); margin: 0.5em 0 0.5em; border-bottom: 1px solid #333; padding-bottom: 4px;
+}
+.md-view h1:first-child { margin-top: 0; }
+.md-view h1 { font-size: 1.3em; }
+.md-view h2 { font-size: 1.1em; }
+.md-view h3 { font-size: 1em; }
+.md-view p { margin: 0.5em 0; }
+.md-view a { color: var(--accent); }
+.md-view code {
+  background: #222; padding: 2px 5px; border-radius: 3px; font-size: 0.9em;
+}
+.md-view pre {
+  background: #222; border: 1px solid #333; border-radius: 4px;
+  padding: 10px; overflow-x: auto; margin: 0.5em 0;
+}
+.md-view pre code { background: none; padding: 0; }
+.md-view ul, .md-view ol { padding-left: 20px; margin: 0.5em 0; }
+.md-view li { margin: 0.3em 0; }
+.md-view strong { color: var(--accent); }
+.md-view blockquote {
+  border-left: 3px solid var(--accent); padding-left: 10px; color: #888; margin: 0.5em 0;
+}
+.md-view table {
+  width: 100%; border-collapse: collapse; margin: 0.5em 0;
+  font-size: 1rem;
+}
+.md-view th, .md-view td {
+  border: 1px solid #333; padding: 5px 10px; text-align: left;
+  font-size: inherit;
+}
+.md-view th { background: #222; color: var(--accent); font-size: inherit; }
+.md-view tr:hover { background: #1a1a1a; }
+.md-view img {
+  max-width: 100%; height: auto; border: 1px solid #333;
+  border-radius: 4px; margin: 0.5em 0;
+}
+.md-view hr {
+  border: none; border-top: 1px solid #333; margin: 1em 0;
+}
+.md-view del { color: #666; }
+.md-view input[type="checkbox"] {
+  accent-color: var(--accent); margin-right: 6px;
+}
+.md-back {
+  display: inline-block; margin-bottom: 0; color: #888;
+  cursor: pointer; font-size: 0.9em;
+}
+div.md-view { padding-top: 0; }
+.md-back:hover { color: var(--accent); }
+
+/* ==========================================================================
+   Noir theme — dark slate + cyan/violet, to match robertvigil.com's theme.
+   Grey body text with cyan accents (like "plain"), not monochrome terminal.
+   ========================================================================== */
+[data-theme="noir"] body {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(56,225,255,.10), transparent 22rem),
+    radial-gradient(circle at 100% 0%, rgba(143,139,216,.12), transparent 20rem),
+    #1b1f2a;
+  background-attachment: fixed;
+  color: #c7cdda;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+}
+[data-theme="noir"] h1 { text-shadow: 0 0 24px rgba(56,225,255,.25); }
+[data-theme="noir"] .totals .label,
+[data-theme="noir"] .attach-name { color: #8b93a6; }
+[data-theme="noir"] #status { color: #6b7385; }
+
+/* search */
+[data-theme="noir"] .search-bar input {
+  background: #232838; color: #eaedf4;
+  border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+}
+[data-theme="noir"] .search-bar input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56,225,255,.14);
+}
+[data-theme="noir"] .search-bar input::placeholder { color: #6b7385; }
+
+/* result cards */
+[data-theme="noir"] #output > table > tbody > tr {
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.1); border-radius: 10px;
+}
+[data-theme="noir"] #output > table > tbody > tr:hover { background: rgba(56,225,255,.05); }
+[data-theme="noir"] #output > table > tbody > tr > td:nth-child(2) { color: #8b93a6; }
+[data-theme="noir"] td a { color: var(--accent); }
+
+/* action bar + create form + inline edit */
+[data-theme="noir"] .action-bar button,
+[data-theme="noir"] td.actions button,
+[data-theme="noir"] .create-form button,
+[data-theme="noir"] tr.editing .edit-row-2 button { color: #7a8296; }
+[data-theme="noir"] .create-form {
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.1); border-radius: 12px;
+}
+[data-theme="noir"] .create-form input,
+[data-theme="noir"] .create-form .content-input,
+[data-theme="noir"] tr.editing .edit-row-1 textarea,
+[data-theme="noir"] tr.editing td input {
+  background: #232838; color: #eaedf4;
+  border: 1px solid rgba(255,255,255,.14); border-radius: 8px;
+}
+[data-theme="noir"] .totals { border-radius: 12px; }
+
+/* markdown viewer */
+[data-theme="noir"] .md-view a { color: var(--accent); }
+[data-theme="noir"] .md-view strong { color: #fff; }
+[data-theme="noir"] .md-view h1,
+[data-theme="noir"] .md-view h2,
+[data-theme="noir"] .md-view h3 { border-bottom-color: rgba(255,255,255,.1); }
+[data-theme="noir"] .md-view code { background: rgba(56,225,255,.1); color: #9fe9ff; }
+[data-theme="noir"] .md-view pre {
+  background: #11141d; border: 1px solid rgba(255,255,255,.1);
+}
+[data-theme="noir"] .md-view pre code { background: none; color: inherit; }
+[data-theme="noir"] .md-view blockquote { border-left-color: var(--accent); color: #8b93a6; }
+[data-theme="noir"] .md-view th { background: #232838; color: var(--accent); }
+[data-theme="noir"] .md-view th,
+[data-theme="noir"] .md-view td { border-color: rgba(255,255,255,.1); }
+[data-theme="noir"] .md-view tr:hover { background: rgba(56,225,255,.05); }
+[data-theme="noir"] .md-view img { border-color: rgba(255,255,255,.12); }
+[data-theme="noir"] .md-view hr { border-top-color: rgba(255,255,255,.1); }
+[data-theme="noir"] .md-back { color: #8b93a6; }
+
+/* Mobile bottom padding — prevents browser toolbar from covering totals bar */
+@media (max-width: 600px) {
+  body { padding-bottom: 30px; }
+}
+
+/* Mobile — no longer needed, card layout is now the default
+@media (max-width: 600px) {
+  table, tbody, tr, td { display: block; width: 100%; }
+  table tr:first-child th { display: none; }
+  table tr:has(th) { display: none; }
+  tr {
+    border: 1px solid #333; border-radius: 4px;
+    padding: 6px 8px; margin-bottom: 6px;
+  }
+  td { border: none; padding: 1px 0; }
+  td:nth-child(1) { display: inline-block; width: auto; padding-right: 10px; font-size: 0.85em; color: #888; }
+  td.content-cell { display: inline; }
+  td.actions { display: inline; padding-left: 10px; }
+}
+*/

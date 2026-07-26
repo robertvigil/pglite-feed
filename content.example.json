@@ -1,0 +1,24 @@
+{
+  "config": {
+    "site_title": "my feed",
+    "theme": "noir"
+  },
+  "entries": [
+    {
+      "feed_date": "2026-01-05",
+      "feed_content": "Welcome — this is a **read-only** feed. It loads from `content.json`; place that file next to `index.html` to activate read-only mode. Full manual: [help reference](assets/help.md)."
+    },
+    {
+      "feed_date": "2026-01-04",
+      "feed_content": "Entries are Markdown: headings, lists, links, code, tables, math ($E = mc^2$), and Mermaid diagrams all render."
+    },
+    {
+      "feed_date": "2026-01-03",
+      "feed_content": "Tag entries with hashtags like #welcome and #demo — type `#` in the search bar to browse every tag."
+    },
+    {
+      "feed_date": "2026-01-02",
+      "feed_content": "Link to a saved search from any entry: [posts tagged #welcome](?search=%23welcome). Images use `![alt](assets/your-image.png)`."
+    }
+  ]
+}
