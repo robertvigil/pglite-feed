@@ -150,7 +150,7 @@ Both formats are supported on import. Export uses the object format when config 
 
 1. Make a free jsonbin.io account, create a **Collection**, and copy its Collection ID.
 2. In the search bar, run `!cloud jsonbin <collectionId>`. You'll be prompted (masked) for your jsonbin **Master Key**.
-3. On your first `!push` you'll be prompted for an **encryption passphrase**. Use the *same* passphrase on every device.
+3. On your first `!cloud push` you'll be prompted for an **encryption passphrase**. Use the *same* passphrase on every device.
 
 Both secrets live in this device's IndexedDB (set once, not re-typed each session). `!cloud off` forgets them.
 
@@ -161,8 +161,8 @@ Both secrets live in this device's IndexedDB (set once, not re-typed each sessio
 | `!cloud` | Show status: collection, device, what's stored, in-sync vs unsaved |
 | `!cloud jsonbin <collectionId>` | Configure the backend (prompts for master key) |
 | `!cloud list` | List your remote snapshots — no passphrase needed |
-| `!push [name]` | Encrypt + upload a snapshot (default name `main`) |
-| `!pull [name]` | Download + decrypt + load a snapshot (replaces local data) |
+| `!cloud push [name]` | Encrypt + upload a snapshot (default name `main`) |
+| `!cloud pull [name]` | Download + decrypt + load a snapshot (replaces local data) |
 | `!cloud device <label>` | Label this device (`laptop`, `phone`) so `list` is readable |
 | `!cloud off` | Disconnect and forget secrets on this device |
 
@@ -171,7 +171,7 @@ Snapshots are **named** — keep a `main` plus backups, and pull any of them ont
 **Notes**
 
 - Data is **gzip-compressed then encrypted** (WebCrypto **PBKDF2 (250k) → AES-GCM**), so the uploaded blob is small; needs a secure context (https or localhost). What's stored remotely is always a JSON envelope with a base64 `ct` field — jsonbin never sees gzip or your data.
-- Each snapshot carries a cleartext `app` tag, so trying to `!pull` an *activities* backup into the feed is refused before anything is decrypted.
+- Each snapshot carries a cleartext `app` tag, so trying to `!cloud pull` an *activities* backup into the feed is refused before anything is decrypted.
 - jsonbin's free tier caps bin size at 100 KB (Pro: 1 MB). Compression usually keeps you well under the free limit; a very large export may still need a self-hosted backend (planned: the `RemoteStore` interface lets a `robertvigil.com/vault` backend slot in behind the same commands).
 
 ## Content formatting

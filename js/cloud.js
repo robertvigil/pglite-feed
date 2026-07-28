@@ -25,8 +25,8 @@
 //   !cloud list                 list this app's remote snapshots (no passphrase needed)
 //   !cloud device <label>       set this device's label ("laptop", "phone")
 //   !cloud off                  disconnect + forget secrets on this device
-//   !push [name]                encrypt + upload snapshot (default "main")
-//   !pull [name]                download + decrypt + load snapshot (default "main")
+//   !cloud push [name]          encrypt + upload snapshot (default "main")
+//   !cloud pull [name]          download + decrypt + load snapshot (default "main")
 
 const API = 'https://api.jsonbin.io/v3';
 const enc = new TextEncoder();
@@ -381,15 +381,15 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     }
     saveConfig({ backend: 'jsonbin', collectionId });
     const k = await ensureMasterKey();
-    if (!k) alert(`Saved collection ${collectionId}. Master key not entered yet — you'll be prompted on your first !push.`);
-    else alert(`Cloud configured — jsonbin collection ${collectionId}.\n\nNext:  !push   uploads the "${DEFAULT}" snapshot.`);
+    if (!k) alert(`Saved collection ${collectionId}. Master key not entered yet — you'll be prompted on your first !cloud push.`);
+    else alert(`Cloud configured — jsonbin collection ${collectionId}.\n\nNext:  !cloud push   uploads the "${DEFAULT}" snapshot.`);
     updateDirty();
   }
 
   async function doStatus() {
     const cfg = loadConfig();
     if (!cfg) {
-      alert('Cloud: not configured.\n\nSet up:\n  !cloud jsonbin <collectionId>\nThen:\n  !push   /   !pull   /   !cloud list');
+      alert('Cloud: not configured.\n\nSet up:\n  !cloud jsonbin <collectionId>\nThen:\n  !cloud push  /  !cloud pull  /  !cloud list');
       return;
     }
     const hasKey = !!(await idbGet(SDB, 'masterKey'));
@@ -406,7 +406,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
       `Passphrase:   ${hasPass ? 'stored' : 'not stored'}\n` +
       `Last sync:    ${st ? `"${st.name}" ${fmt(st.savedAt)}` : 'never'}\n` +
       `State:        ${dirty}\n\n` +
-      `!push [name] · !pull [name] · !cloud list · !cloud device <label> · !cloud off`
+      `!cloud push · !cloud pull · !cloud list · !cloud device <label> · !cloud off`
     );
   }
 
@@ -419,11 +419,11 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     busy = true; setInd('busy');
     try {
       const arr = await listSnapshots(masterKey, cfg.collectionId);
-      if (!arr.length) alert(`No ${appKind} snapshots in this collection yet.\n\nCreate one with:  !push`);
+      if (!arr.length) alert(`No ${appKind} snapshots in this collection yet.\n\nCreate one with:  !cloud push`);
       else alert(
         `${appKind} snapshots (${arr.length}):\n\n` +
         arr.map((s) => `• ${s.name} — ${fmt(s.savedAt)} (${s.device})`).join('\n') +
-        `\n\nPull one with:  !pull <name>`
+        `\n\nPull one with:  !cloud pull <name>`
       );
     } catch (e) { alert('List failed: ' + e.message); }
     finally { busy = false; updateDirty(); }
@@ -520,16 +520,16 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
 
   async function command(cmd, args) {
     try {
-      if (cmd === 'push') { await doPush(args[0] || DEFAULT); return true; }
-      if (cmd === 'pull') { await doPull(args[0] || DEFAULT); return true; }
       if (cmd === 'cloud') {
         const sub = (args[0] || '').toLowerCase();
         if (!sub) await doStatus();
+        else if (sub === 'push') await doPush(args[1] || DEFAULT);
+        else if (sub === 'pull') await doPull(args[1] || DEFAULT);
         else if (sub === 'jsonbin') await doConfigure(args[1]);
         else if (sub === 'list') await doList();
         else if (sub === 'off') await doOff();
         else if (sub === 'device') doDevice(args.slice(1).join(' '));
-        else alert(`Unknown !cloud subcommand: "${sub}"\n\nTry:  !cloud · !cloud jsonbin <id> · !cloud list · !cloud device <label> · !cloud off`);
+        else alert(`Unknown !cloud subcommand: "${sub}"\n\nTry:  !cloud · !cloud push · !cloud pull · !cloud list · !cloud jsonbin <id> · !cloud device <label> · !cloud off`);
         return true;
       }
     } catch (e) { alert('Cloud error: ' + e.message); return true; }

@@ -167,7 +167,7 @@ async function handleCommand(input) {
   const parts = raw.substring(1).split(/\s+/);
   const cmd = parts[0]?.toLowerCase();
 
-  if (cmd === 'cloud' || cmd === 'push' || cmd === 'pull') {
+  if (cmd === 'cloud') {
     const handled = await cloud.command(cmd, parts.slice(1));
     if (handled) document.getElementById('search').value = '';
     return handled;
