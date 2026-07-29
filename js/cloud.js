@@ -303,16 +303,24 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     ind.style.cssText = 'display:none;font-size:12px;margin:-4px 0 8px;opacity:.8;cursor:pointer;user-select:none;';
     bar.insertAdjacentElement('afterend', ind);
     ind.addEventListener('click', () => {
-      if (ind.dataset.state === 'dirty') doPush(DEFAULT);
+      // Push to the snapshot you're currently synced with (not always "main"),
+      // so the one-click follows your named-snapshot workflow.
+      if (ind.dataset.state === 'dirty') doPush(loadState()?.name || DEFAULT);
       else doStatus();
     });
   })();
-  function setInd(state, title) {
+  function setInd(state, title, name) {
     if (!ind) return;
     ind.dataset.state = state || '';
     if (state === 'busy') { ind.style.display = ''; ind.textContent = '☁ …'; ind.style.color = '#888'; ind.title = 'Working…'; }
     else if (state === 'synced') { ind.style.display = ''; ind.textContent = '☁ synced'; ind.style.color = '#888'; ind.title = title || 'In sync with the cloud.'; }
-    else if (state === 'dirty') { ind.style.display = ''; ind.textContent = '☁ unsaved — click to push'; ind.style.color = '#ffb000'; ind.title = title || 'Local changes not yet pushed.'; }
+    else if (state === 'dirty') {
+      ind.style.display = '';
+      // Name the target snapshot when it isn't the default, so a click is never a surprise.
+      ind.textContent = (name && name !== DEFAULT) ? `☁ unsaved — click to push "${name}"` : '☁ unsaved — click to push';
+      ind.style.color = '#ffb000';
+      ind.title = `Local changes not pushed. Click to push to "${name || DEFAULT}".`;
+    }
     else { ind.style.display = 'none'; }
   }
 
@@ -327,7 +335,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     const hash = await sha256Hex(stable(data));
     const st = loadState();
     if (st && st.hash === hash) setInd('synced', `In sync with "${st.name}" (${fmt(st.savedAt)}).`);
-    else setInd('dirty');
+    else setInd('dirty', null, st?.name || DEFAULT);
   }
 
   // --- resolve a snapshot name -> { binId, env } for THIS app, warming the cache ---
