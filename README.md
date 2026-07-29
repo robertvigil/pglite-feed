@@ -161,6 +161,7 @@ Both secrets live in this device's IndexedDB (set once, not re-typed each sessio
 | `!cloud` | Show status: collection, device, what's stored, in-sync vs unsaved |
 | `!cloud jsonbin <collectionId>` | Configure the backend (prompts for master key) |
 | `!cloud list` | List your remote snapshots — no passphrase needed |
+| `!cloud delete <name>` | Permanently delete a remote snapshot |
 | `!cloud push [name]` | Encrypt + upload a snapshot (default name `main`) |
 | `!cloud pull [name]` | Download + decrypt + load a snapshot (replaces local data) |
 | `!cloud device <label>` | Label this device (`laptop`, `phone`) so `list` is readable |

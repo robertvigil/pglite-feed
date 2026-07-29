@@ -23,6 +23,7 @@
 //   !cloud                      status
 //   !cloud jsonbin <collId>     configure backend (prompts, masked, for master key)
 //   !cloud list                 list this app's remote snapshots (no passphrase needed)
+//   !cloud delete <name>        permanently delete a remote snapshot
 //   !cloud device <label>       set this device's label ("laptop", "phone")
 //   !cloud off                  disconnect + forget secrets on this device
 //   !cloud push [name]          encrypt + upload snapshot (default "main")
@@ -236,6 +237,10 @@ async function jbRead(masterKey, binId) {
   if (!r.ok) throw new Error(await jbErr(r));
   return (await r.json()).record;
 }
+async function jbDelete(masterKey, binId) {
+  const r = await fetch(`${API}/b/${binId}`, { method: 'DELETE', headers: jbHeaders(masterKey) });
+  if (!r.ok) throw new Error(await jbErr(r));
+}
 async function jbListBins(masterKey, collectionId) {
   const r = await fetch(`${API}/c/${collectionId}/bins`, { headers: jbHeaders(masterKey) });
   if (!r.ok) throw new Error(await jbErr(r));
@@ -414,7 +419,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
       `Passphrase:   ${hasPass ? 'stored' : 'not stored'}\n` +
       `Last sync:    ${st ? `"${st.name}" ${fmt(st.savedAt)}` : 'never'}\n` +
       `State:        ${dirty}\n\n` +
-      `!cloud push · !cloud pull · !cloud list · !cloud device <label> · !cloud off`
+      `!cloud push · !cloud pull · !cloud list · !cloud delete <name> · !cloud device <label> · !cloud off`
     );
   }
 
@@ -431,7 +436,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
       else alert(
         `${appKind} snapshots (${arr.length}):\n\n` +
         arr.map((s) => `• ${s.name} — ${fmt(s.savedAt)} (${s.device})`).join('\n') +
-        `\n\nPull one with:  !cloud pull <name>`
+        `\n\nPull:  !cloud pull <name>    ·    Delete:  !cloud delete <name>`
       );
     } catch (e) { alert('List failed: ' + e.message); }
     finally { busy = false; updateDirty(); }
@@ -500,6 +505,28 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     } finally { busy = false; updateDirty(); }
   }
 
+  async function doDelete(name) {
+    const cfg = loadConfig();
+    if (!cfg) { alert('Cloud not configured. Run: !cloud jsonbin <collectionId>'); return; }
+    if (!name) { alert(`Usage: !cloud delete <name>\n\nList snapshots:  !cloud list`); return; }
+    if (!secureOk()) return;
+    const masterKey = await ensureMasterKey();
+    if (!masterKey) return;
+    busy = true; setInd('busy');
+    try {
+      const found = await resolveBin(masterKey, cfg.collectionId, name);
+      if (!found) { alert(`No snapshot named "${name}" for ${appKind}.\n\nSee what's there:  !cloud list`); updateDirty(); return; }
+      if (!confirm(`Permanently DELETE remote snapshot "${name}" (saved ${fmt(found.env.savedAt)} from ${found.env.device})?\n\nThis deletes only the cloud copy — your local data is untouched. Cannot be undone.`)) { updateDirty(); return; }
+      await jbDelete(masterKey, found.binId);
+      const map = loadBins(); delete map[name]; saveBins(map);
+      // If we were tracking this snapshot, forget the sync state so the indicator recomputes.
+      if (loadState()?.name === name) localStorage.removeItem(K.state);
+      alert(`Deleted snapshot "${name}".`);
+    } catch (e) {
+      alert('Delete failed: ' + e.message + describeNetworkError(e));
+    } finally { busy = false; updateDirty(); }
+  }
+
   async function doOff() {
     if (!confirm('Disconnect cloud on this device and forget the stored master key + passphrase?\n\n(Your remote snapshots are not deleted.)')) return;
     localStorage.removeItem(K.config);
@@ -535,9 +562,10 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
         else if (sub === 'pull') await doPull(args[1] || DEFAULT);
         else if (sub === 'jsonbin') await doConfigure(args[1]);
         else if (sub === 'list') await doList();
+        else if (sub === 'delete') await doDelete(args[1]);
         else if (sub === 'off') await doOff();
         else if (sub === 'device') doDevice(args.slice(1).join(' '));
-        else alert(`Unknown !cloud subcommand: "${sub}"\n\nTry:  !cloud · !cloud push · !cloud pull · !cloud list · !cloud jsonbin <id> · !cloud device <label> · !cloud off`);
+        else alert(`Unknown !cloud subcommand: "${sub}"\n\nTry:  !cloud · !cloud push · !cloud pull · !cloud list · !cloud delete <name> · !cloud jsonbin <id> · !cloud device <label> · !cloud off`);
         return true;
       }
     } catch (e) { alert('Cloud error: ' + e.message); return true; }
