@@ -8,23 +8,7 @@ A browser-only microblog/feed powered by [PGlite](https://pglite.dev/) (PostgreS
 
 ## How it works
 
-A static web app loaded in your browser. Entries live in the browser's IndexedDB via PGlite. A `feed.json` file auto-loads as sample content on first visit.
-
-## Modes
-
-The app automatically detects its mode on page load — no URL parameters or toggles:
-
-```
-Page load
-  ├── content.json exists on server → READ-ONLY
-  │   └── Public-facing site, content managed externally
-  │
-  └── content.json not found → READ-WRITE
-      └── Full CRUD, import/export, commands — all controls always visible
-```
-
-- **Read-write** — the default when you clone and run. All editing controls are always visible. `feed.json` seeds the DB on first visit.
-- **Read-only** — activated by deploying a `content.json` file alongside `index.html`. The app refreshes from `content.json` automatically. No editing controls, no `!` commands. Used for public-facing sites whose content is maintained externally.
+A static web app loaded in your browser. Entries live in the browser's IndexedDB via PGlite. A single-entry `feed.json` seeds a brand-new browser with a pointer to the docs.
 
 ## Features
 
@@ -36,30 +20,88 @@ Page load
 - **Tag cloud** — type `#` in the search bar to see all hashtags with counts and percentages. Click any tag to search for it.
 - **Search via URL** — `?search=%23git` pre-fills the search bar. Enables clickable links in content that trigger searches.
 - **Clear button (×)** — clears the search and returns to the default view. Acts as a "home" button.
-- **Inline CRUD** — create (✚), edit (✎), and delete (✕) entries directly. Always visible in read-write mode.
+- **Inline CRUD** — create (✚), edit (✎), and delete (✕) entries directly. Always visible.
 - **Configurable title** — type `!title My Site` in the search bar to customize the `[feed]` header. Included in JSON exports.
 - **Theme support** — type `!theme amber`, `!theme white`, or `!theme green` in the search bar to switch the accent color. Persists across sessions and is included in JSON exports.
 - **Markdown-style links** — `[display text](url)` in content becomes a clickable link. Bare URLs are also auto-linked.
 - **Persistence** — on Chromium browsers (Chrome/Edge/Brave/Arc) over HTTPS or `localhost`, two icons attach the feed to a real JSON file on disk: `🔗` opens an existing file (safe — read-then-decide), `📝` creates a new file or overwrites a chosen one. After attach, every edit live-syncs. On Firefox/Safari, falls back to traditional `↓ Save` / `↑ Open` buttons. Capability-gated — the UI shows one flow or the other, never both.
-- **Auto-load on empty DB** — first visit loads `feed.json` (sample/help content). After that, you manage everything yourself.
+- **Auto-load on empty DB** — first visit loads `feed.json`, a single entry linking the in-app help and the repo. Delete it and the app is yours.
 - **Keyboard-friendly** — Esc cancels create/edit, Ctrl+Enter or Shift+Enter submits forms.
 - **Mobile responsive** — compact cards on small screens, tables on desktop.
 - **Retro terminal aesthetic** — green-on-black by default, with amber and white alternatives.
 
-## Search behavior
+## Search syntax
 
-A four-row teaser:
+Search runs as you type (debounced via the `input` event); commands and the filtered tag cloud are committed on Enter.
 
-| Search input | Behavior |
+| Input | Behavior |
 |---|---|
-| *(empty)* | Default view — entries with no hashtags, plus any tagged `#pin` |
-| `word -other #tag` | AND match with exclusion and hashtag filtering |
-| `#a\|#b` | OR alternation within a token (no spaces around `\|`) |
-| `#` / `# term` | Full or filtered tag cloud with counts and percentages |
+| *(empty)* | Show entries with no hashtags, plus any tagged `#pin`. Reference data stays hidden by default. |
+| `word` | AND substring match across `feed_content`. |
+| `word1 word2` | AND match — both terms must appear. |
+| `-word` | Exclude — entries NOT containing the term. |
+| `#a\|#b` | OR alternation within one token — entries matching either. No spaces around `\|`. Combines with AND/exclude/dates as you'd expect. |
+| `#tag` | Find entries containing the literal `#tag`. |
+| `#` | Show **full tag cloud** with counts and percentages, sorted by frequency. Percentages are each tag's share of matched rows; `<1%` for vanishingly rare ones. |
+| `# term1 term2` | Show **filtered tag cloud** — counts computed only over entries matching `term1 AND term2`. Any regular search syntax (`-`, `after:`, `before:`, `#tag`) works after the leading `#`. |
+| `# #git` | Tag cloud of entries containing `#git`. Useful for "what tags co-occur with this one?" |
+| `git #` | Trailing/middle `#` is stripped — only **leading** `#` is a mode flag. Treated as just `git`. |
+| `after:YYYY-MM-DD` | Entries on or after this date (ISO format). |
+| `before:YYYY-MM-DD` | Entries on or before this date (ISO format). |
+| `after:today` / `before:tomorrow` | Symbolic date names — see table below. Resolved at parse time, so `?search=after:today` URLs are evergreen. |
+| `after:-7d` / `before:+30d` | Relative offsets from today. Format: `[+-]<int><unit>` where unit is `d`, `w`, `m`, `y`. |
+| `after:... before:... #git` | All filters combine with AND. |
+| `-#git` | Exclude entries containing `#git`. |
+| `#pin` | The pin override — any entry tagged `#pin` shows on the default view regardless of other tags. |
+
+Single-character search terms (`a`, `i`, etc.) are stripped as noise — too broad to be useful. The lone `#` mode flag is detected before this rule applies.
+
+### Symbolic dates and relative offsets
+
+`after:` and `before:` accept three input forms — ISO date, symbolic name, or relative offset. Resolution happens *every time the search runs*, so a URL like `?search=after:today` always means "today as of right now" — perfect for evergreen calendar links.
+
+**Symbolic names:**
+
+| Name | Resolves to |
+|---|---|
+| `today` | current date |
+| `yesterday` | -1 day |
+| `tomorrow` | +1 day |
+| `week-start` | most recent Monday |
+| `week-end` | week-start + 6 days (Sunday) |
+| `month-start` | 1st of current month |
+| `month-end` | last day of current month |
+| `year-start` | January 1 of current year |
+| `year-end` | December 31 of current year |
+
+**Relative offsets:** `[+-]<integer><unit>`, where unit is one of:
+
+| Unit | Meaning |
+|---|---|
+| `d` | days (`+7d`, `-30d`) |
+| `w` | weeks (`+2w`, `-4w`) |
+| `m` | months (`+1m`, `-3m`) — clamps to last valid day of target month, so `Jan 31 + 1m` → `Feb 28`/`29` (not `Mar 3`) |
+| `y` | years (`+1y`, `-2y`) — clamps leap-year edges, so `Feb 29 + 1y` → `Feb 28` (not `Mar 1`) |
+
+**Example calendar URLs (evergreen):**
+
+```
+[Today](?search=after:today%20before:today)
+[This week](?search=after:week-start%20before:week-end)
+[This month](?search=after:month-start%20before:month-end)
+[Upcoming 30 days](?search=after:today%20before:%2B30d)
+[Past week](?search=after:-7d%20before:today)
+```
+
+(The `%2B` in `+30d` is the URL-encoded `+`, since raw `+` in URLs decodes to a space.)
+
+Invalid date values (e.g., `after:notadate`) silently drop the filter rather than erroring — your search still runs, just without the date constraint.
+
+### Clicking tags in the cloud
+
+Click any tag → search is replaced with just that tag (drops any filter that was scoping the cloud). To drill deeper, type a fresh `# tag1 tag2` query.
 
 A **📋 button** appears in the search bar when the query is shareable — clicking it copies the corresponding `?search=...` URL to your clipboard, properly encoded.
-
-Date filters (`after:`, `before:`), URL-parameter pre-fill (`?search=...`), and the full encoding table all live in the in-app reference: **[assets/help.md](assets/help.md)**. That's also what gets rendered when you click the help link inside the app.
 
 ## Schema
 
@@ -90,6 +132,24 @@ Then open `http://localhost:8767/`.
 ### Deploy to a real server
 
 It's two files: `index.html` + `feed.json`. Drop them behind any web server — nginx, Caddy, Vercel, GitHub Pages, etc.
+
+## Commands (`!` prefix)
+
+Typed into the search bar, committed with Enter. While a `!` command is in the box,
+search does not fire.
+
+| Command | Effect |
+|---|---|
+| `!title My Site` | Set the page title to `[My Site]`. |
+| `!title` | Clear — revert to default `[feed]`. |
+| `!theme green` | Switch to green-on-black (default). |
+| `!theme amber` | Switch to amber-on-black. |
+| `!theme white` | Switch to white-on-black. |
+| `!theme` | Clear — revert to green. |
+| `!cloud …` | Encrypted remote snapshots — see below. |
+| `!local …` | Snapshots in a folder on disk — see below. |
+
+Title and theme persist in the `config` table and are included in JSON exports.
 
 ## Persistence
 
@@ -240,21 +300,79 @@ Names are bare words, no quotes and no paths: `!local push before-trip` writes
   disconnect the cloud, and the `☁` indicator still reflects **cloud** state only.
   One-mode-at-a-time and a `💾` glyph are planned.
 
+## URL parameters
+
+`?search=<encoded>` pre-fills the search bar on load. Lets content link to searches.
+
+### Encoding cheat sheet
+
+| Character | Encoded | Notes |
+|---|---|---|
+| `#` | `%23` | **Must** be encoded — raw `#` truncates the URL at the fragment. |
+| ` ` (space) | `%20` | **Must** be encoded — raw space breaks address-bar parsing. |
+| `:` | `%3A` | Used in `after:` / `before:`. |
+| `\|` | `%7C` | Optional in modern browsers (raw `\|` usually works), but encoding is the safe form. |
+| `-` | `-` | Unreserved — never needs encoding. |
+| `+` | `%2B` | **Must** be encoded — raw `+` in URLs decodes to a space. Used in relative offsets like `+30d`. |
+
+> The encoded `%23` doesn't trigger the "no hashtags" default-view filter — that regex matches literal `#[a-zA-Z]`, not the URL-encoded form. So `?search=%23pin` is a valid way to land on pinned content via URL.
+
+### Examples
+
+```
+[files](?search=%23files)                          → #files                      (single tag)
+[chmod](?search=chmod)                              → chmod                       (substring)
+[ssh tunnel](?search=ssh%20-L)                     → ssh -L                      (AND)
+[exclude mastered](?search=-%23mastered)           → -#mastered                  (NOT)
+[pending or mastered](?search=%23pending%7C%23mastered) → #pending|#mastered     (OR)
+[neither](?search=-%23pending%7C%23mastered)       → -#pending|#mastered         (NOT both)
+[combo](?search=%23pending%7C%23mastered%20%23f1)  → #pending|#mastered #f1      (OR + AND)
+[april entries](?search=after%3A2026-04-01)        → after:2026-04-01            (date)
+[git tags](?search=%23%20%23git)                   → # #git                      (filtered tag cloud)
+```
+
+These URLs can be shared directly — recipients open the app with the search pre-filled. Term order doesn't matter; the parser sorts include/exclude/dates into buckets regardless of position.
+
+**Clicking a `?search=...` link inside the app updates in place — no page reload.** The search bar re-fills, the URL bar updates, the query fires. Back/forward buttons walk through your search history. Modifier-click (Cmd/Ctrl/Shift/middle-click) still opens in a new tab as expected. URLs entered via the address bar or shared from elsewhere still load fresh — that's required for the page to load at all from outside.
+
+To generate one programmatically: `encodeURIComponent(searchString)` in JavaScript, `urllib.parse.quote(s)` in Python.
+
+### Copy a search as a shareable URL (📋 button)
+
+Easier than encoding by hand: type your query into the search bar, then click the **📋** icon that appears between the search input and the × clear button. The full `?search=...` URL is copied to your clipboard, properly encoded for `#`, spaces, `+`, `:`, `|`, and the rest. Icon briefly flashes to ✓ as confirmation.
+
+The button is **hidden when:**
+
+- The search bar is empty (nothing to share).
+- The search starts with `!` (commands don't auto-fire from URL pre-fill, so the link would be useless).
+
+Symbolic dates and relative offsets (`after:today`, `before:+30d`) survive copy-as-URL unchanged — they get encoded literally and resolve against the recipient's "today" when the link is opened. That's why these URLs stay evergreen.
+
+## Keyboard shortcuts
+
+| Key | Effect |
+|---|---|
+| `Esc` | Cancel the open create form, or cancel an in-progress row edit. |
+| `Ctrl+Enter` / `Shift+Enter` | Submit the create form, or save an in-progress row edit. |
+| `Enter` (in search) | Run a `!` command (otherwise search runs on input). |
+
 ## Data privacy
 
 - All data lives in your browser's IndexedDB
 - Nothing is sent to any server
-- Other visitors get their own empty database (or the sample `feed.json` content on first visit)
-- There's no admin login — editing controls are always visible in read-write mode, but each visitor only edits their own browser's data
+- Other visitors get their own empty database (seeded with the one `feed.json` entry on first visit)
+- There's no admin login — editing controls are always visible, but each visitor only edits their own browser's data
 
 ## Forking
 
 Clone the repo, deploy to your own domain, and you get the full workflow:
 
 1. Create entries, tag them with #hashtags
-2. Save to `feed.json` (↓ button), upload to your server
-3. To make it public/read-only: rename your export to `content.json` and deploy alongside `index.html`
-4. Visitors see your content, refreshed automatically when you update `content.json`
+2. Snapshot your data with `!local push` (a folder on disk) or `!cloud push` (encrypted, jsonbin)
+3. Pull that snapshot on any other browser or device
+
+The app is single-user by design: every visitor gets their own database in their own
+browser, and there is no server-managed content.
 
 ## Built with
 

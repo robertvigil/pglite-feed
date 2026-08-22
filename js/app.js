@@ -66,77 +66,34 @@ await db.exec(`
   );
 `);
 
-// --- Determine mode: read-only (content.json exists) or read-write (no content.json) ---
-let isReadOnly = false;
-
+// --- Seed an empty database from feed.json (first visit only) ---
+// This app is single-user: the browser's IndexedDB is the source of truth and
+// there is no server-managed content. feed.json only bootstraps a brand-new
+// browser with a pointer to the docs; edit or delete it like any other entry.
 try {
-  const headResp = await fetch('content.json', { method: 'HEAD', cache: 'no-store' });
-  const contentType = headResp.headers.get('Content-Type') || '';
-  if (headResp.ok && contentType.includes('json')) {
-    // content.json exists → read-only mode
-    isReadOnly = true;
-    const serverModified = headResp.headers.get('Last-Modified') || '';
-    const localResult = await db.query("SELECT value FROM config WHERE key = 'content_loaded'");
-    const localModified = localResult.rows[0]?.value || '';
-
-    if (serverModified !== localModified) {
-      document.getElementById('output').textContent = localModified ? 'Refreshing content...' : 'Loading content...';
-      const resp = await fetch('content.json', { cache: 'no-store' });
+  const count = await db.query('SELECT COUNT(*) AS n FROM feed;');
+  if (count.rows[0].n === 0n || count.rows[0].n === 0) {
+    document.getElementById('output').textContent = 'Loading...';
+    const resp = await fetch('feed.json');
+    const feedType = resp.headers.get('Content-Type') || '';
+    if (resp.ok && feedType.includes('json')) {
       const raw = await resp.json();
-
       const entries = Array.isArray(raw) ? raw : (raw.entries || []);
       const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
-
-      await db.exec('DELETE FROM feed;');
       for (const row of entries) {
         await db.query(
           'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
           [row.feed_date, row.feed_content]
         );
       }
-
-      // Apply config from JSON
       for (const [key, value] of Object.entries(jsonConfig)) {
         await db.query(
           "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
           [key, value]
         );
       }
-
-      await db.query(
-        "INSERT INTO config (key, value) VALUES ('content_loaded', $1) ON CONFLICT (key) DO UPDATE SET value = $1;",
-        [serverModified]
-      );
       await loadTitle();
       await loadTheme();
-      showLastUpdated();
-    }
-  } else {
-    // content.json does not exist → read-write mode
-    const count = await db.query('SELECT COUNT(*) AS n FROM feed;');
-    if (count.rows[0].n === 0n || count.rows[0].n === 0) {
-      document.getElementById('output').textContent = 'Loading...';
-      const resp = await fetch('feed.json');
-      const feedType = resp.headers.get('Content-Type') || '';
-      if (resp.ok && feedType.includes('json')) {
-        const raw = await resp.json();
-        const entries = Array.isArray(raw) ? raw : (raw.entries || []);
-        const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
-        for (const row of entries) {
-          await db.query(
-            'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
-            [row.feed_date, row.feed_content]
-          );
-        }
-        for (const [key, value] of Object.entries(jsonConfig)) {
-          await db.query(
-            "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
-            [key, value]
-          );
-        }
-        await loadTitle();
-        await loadTheme();
-      }
     }
   }
 } catch (e) {
@@ -162,7 +119,6 @@ async function loadTitle() {
 async function handleCommand(input) {
   const raw = input.trim();
   if (!raw.startsWith('!')) return false;
-  if (isReadOnly) return false;
 
   const parts = raw.substring(1).split(/\s+/);
   const cmd = parts[0]?.toLowerCase();
@@ -210,19 +166,6 @@ async function handleCommand(input) {
   return false;
 }
 
-// --- Show last updated timestamp (read-only mode only) ---
-// In read-write mode this would just leak a stale `content_loaded` value
-// from a past read-only session — it has no meaning when the user manages
-// their own DB locally.
-async function showLastUpdated() {
-  if (!isReadOnly) return;
-  const result = await db.query("SELECT value FROM config WHERE key = 'content_loaded'");
-  const el = document.getElementById('last-updated');
-  if (result.rows[0]?.value) {
-    const d = new Date(result.rows[0].value);
-    el.textContent = `updated ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`;
-  }
-}
 
 // --- Main refresh ---
 async function refresh() {
@@ -231,9 +174,8 @@ async function refresh() {
   // typing, but refresh() is also called directly (e.g. after !local/!cloud pull,
   // where importJsonData restores the command text into the box), and without this
   // the view would render a search for the literal command string.
-  // In read-only mode "!" is not a command, so a leading "!" still searches.
   const rawSearch = document.getElementById('search').value;
-  const searchQuery = (!isReadOnly && rawSearch.trim().startsWith('!')) ? '' : rawSearch;
+  const searchQuery = rawSearch.trim().startsWith('!') ? '' : rawSearch;
   const parsed = parseSearch(searchQuery);
 
   const outputEl = document.getElementById('output');
@@ -292,7 +234,7 @@ async function refresh() {
   const dayNames = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa'];
 
   let html = '<table><tr><th>Content</th><th>Date</th>';
-  if (!isReadOnly) html += '<th></th>';
+  html += '<th></th>';
   html += '</tr>';
 
   for (const row of result.rows) {
@@ -305,12 +247,10 @@ async function refresh() {
       <td class="content-cell md-view">${renderMarkdown(row.feed_content)}</td>
       <td>${displayDate} (${dayName})</td>`;
 
-    if (!isReadOnly) {
-      html += `<td class="actions">
-          <button class="edit" title="Edit">✎</button>
-          <button class="delete" title="Delete">✕</button>
-        </td>`;
-    }
+    html += `<td class="actions">
+        <button class="edit" title="Edit">✎</button>
+        <button class="delete" title="Delete">✕</button>
+      </td>`;
     html += '</tr>';
   }
   html += '</table>';
@@ -319,47 +259,15 @@ async function refresh() {
 }
 
 // --- Setup CRUD (read-write controls, create form, edit/delete, JSON open/save, FSA attach) ---
-const { syncToFile, buildExportData, importJsonData } = setupCrud(db, isReadOnly, refresh);
+const { syncToFile, buildExportData, importJsonData } = setupCrud(db, refresh);
 
-// --- Setup cloud (encrypted remote snapshots via !cloud/!push/!pull) — read-write only ---
-const cloud = isReadOnly
-  ? null
-  : setupCloud({ appKind: 'feed', buildExportData, importJsonData, refresh, syncToFile });
+// --- Setup sync (!cloud remote snapshots, !local folder snapshots) ---
+const cloud = setupCloud({ appKind: 'feed', buildExportData, importJsonData, refresh, syncToFile });
 
-// --- Markdown viewer: intercept clicks on .md links ---
-document.addEventListener('click', async (e) => {
-  const link = e.target.closest('a[href$=".md"]');
-  if (!link) return;
-  e.preventDefault();
 
-  const outputEl = document.getElementById('output');
-  const totalsEl = document.getElementById('totals');
-  totalsEl.style.display = 'none';
-
-  try {
-    outputEl.innerHTML = '<p style="color:#666">Loading...</p>';
-    const resp = await fetch(link.getAttribute('href'));
-    if (!resp.ok) {
-      outputEl.innerHTML = `<p style="color:#f66">Failed to load: ${resp.status}</p>`;
-      return;
-    }
-    const md = await resp.text();
-
-    const html = renderMarkdown(md);
-    outputEl.innerHTML = `
-      <span class="md-back" id="md-back">← back</span>
-      <div class="md-view">${html}</div>
-    `;
-    document.getElementById('md-back').addEventListener('click', () => refresh());
-    renderMermaidBlocks(outputEl);
-  } catch (err) {
-    outputEl.innerHTML = `<p style="color:#f66">Error: ${err.message}</p>`;
-  }
-});
-
-// --- In-page "#section" anchors (e.g. the TOC in help.md) ---
+// --- In-page "#section" anchors inside rendered entry content ---
 // We scroll to the target ourselves. Native fragment nav is unreliable here (the
-// section lives inside a dynamically-swapped #output), and — critically — a
+// target lives inside a dynamically-swapped #output), and — critically — a
 // "#foo" href RESOLVES to include the current ?search= query, so the search-link
 // interceptor below would otherwise treat it as a search link and reload the feed.
 document.addEventListener('click', (e) => {
@@ -466,7 +374,7 @@ copyBtn.addEventListener('click', async () => {
 // --- Wire up search (with command interception in read-write mode) ---
 document.getElementById('search').addEventListener('input', async (e) => {
   const val = e.target.value.trim();
-  if (!isReadOnly && val.startsWith('!')) return;
+  if (val.startsWith('!')) return;
   refresh();
 });
 
@@ -474,7 +382,7 @@ document.getElementById('search').addEventListener('input', async (e) => {
 document.getElementById('search').addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter') return;
   const val = e.target.value.trim();
-  if (!isReadOnly && val.startsWith('!')) {
+  if (val.startsWith('!')) {
     e.preventDefault();
     await handleCommand(val);
   }
@@ -489,5 +397,4 @@ if (searchParam) {
 // --- Init ---
 loadTheme();
 loadTitle();
-showLastUpdated();
 refresh();

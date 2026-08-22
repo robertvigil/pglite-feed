@@ -35,16 +35,13 @@ async function idbHandle(op, value) {
   });
 }
 
-export function setupCrud(db, isReadOnly, refreshFn) {
+export function setupCrud(db, refreshFn) {
   const createForm = document.getElementById('create-form');
   const createToggle = document.getElementById('create-toggle');
   const createCancel = document.getElementById('create-cancel');
   const outputEl = document.getElementById('output');
 
-  // --- Show action bar in read-write mode ---
-  if (!isReadOnly) {
-    document.getElementById('action-bar').style.display = 'flex';
-  }
+  document.getElementById('action-bar').style.display = 'flex';
 
   // --- Attached-file state (live-sync via File System Access API) ---
   let attachedHandle = null;
@@ -60,6 +57,9 @@ export function setupCrud(db, isReadOnly, refreshFn) {
       feed_date: new Date(row.feed_date).toISOString().split('T')[0],
       feed_content: row.feed_content,
     }));
+    // 'content_loaded' is a leftover from the removed read-only mode. Nothing
+    // writes it any more, but databases created before that removal still carry
+    // one — keep excluding it so it never leaks into an export.
     const configResult = await db.query(
       "SELECT key, value FROM config WHERE key NOT IN ('content_loaded')"
     );
@@ -226,7 +226,6 @@ export function setupCrud(db, isReadOnly, refreshFn) {
 
   // --- Row edit/delete via event delegation ---
   outputEl.addEventListener('click', async (e) => {
-    if (isReadOnly) return;
     const btn = e.target.closest('button');
     if (!btn) return;
     const tr = btn.closest('tr');
@@ -354,7 +353,7 @@ export function setupCrud(db, isReadOnly, refreshFn) {
   });
 
   // --- Attach to local file (File System Access API) ---
-  if (!isReadOnly && hasFSA) {
+  if (hasFSA) {
     // FSA available — hide the legacy ↑/↓ buttons; 🔗 / 📝 cover both jobs
     document.getElementById('save-json').style.display = 'none';
     document.getElementById('open-json').style.display = 'none';

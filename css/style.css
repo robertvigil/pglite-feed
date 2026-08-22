@@ -235,12 +235,7 @@ div.md-view {
 .md-view input[type="checkbox"] {
   accent-color: var(--accent); margin-right: 6px;
 }
-.md-back {
-  display: inline-block; margin-bottom: 0; color: #888;
-  cursor: pointer; font-size: 0.9em;
-}
 div.md-view { padding-top: 0; }
-.md-back:hover { color: var(--accent); }
 
 /* ==========================================================================
    Noir theme — dark slate + cyan/violet, to match robertvigil.com's theme.
@@ -316,8 +311,7 @@ div.md-view { padding-top: 0; }
 [data-theme="noir"] .md-view tr:hover { background: rgba(56,225,255,.05); }
 [data-theme="noir"] .md-view img { border-color: rgba(255,255,255,.12); }
 [data-theme="noir"] .md-view hr { border-top-color: rgba(255,255,255,.1); }
-[data-theme="noir"] .md-back { color: #8b93a6; }
-
+[data-theme="noir"] 
 /* Mobile bottom padding — prevents browser toolbar from covering totals bar */
 @media (max-width: 600px) {
   body { padding-bottom: 30px; }
