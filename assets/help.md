@@ -9,6 +9,7 @@ Comprehensive reference for the search bar, commands, persistence, and content f
 - [Commands (`!` prefix)](#commands--prefix)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Persistence](#persistence)
+- [Local snapshots (`!local`)](#local-snapshots-local)
 - [URL parameters](#url-parameters)
 - [Content formatting](#content-formatting)
 - [Capabilities demo](#capabilities-demo)
@@ -109,6 +110,8 @@ Commands are read-write only and run on Enter. While typing a `!` command, searc
 | `!theme amber` | Switch to amber-on-black. |
 | `!theme white` | Switch to white-on-black. |
 | `!theme` | Clear — revert to green. |
+| `!local …` | Snapshot to a folder on this machine — see [Local snapshots](#local-snapshots-local). |
+| `!cloud …` | Encrypted snapshots on jsonbin.io — see the README. |
 
 Title and theme persist in the `config` table and are included in JSON exports. If a JSON file is attached, command changes auto-sync to disk.
 
@@ -175,6 +178,39 @@ Both formats import. Export uses the object form when config exists, flat array 
 If the file vanishes mid-session (drive unmounted, file deleted, permission revoked), the next sync silently fails and the icon flips to amber `⚠`. IndexedDB is unaffected — no data loss. Click the amber icon:
 - Permission expired → one click re-grants and triggers an overwrite from current DB state.
 - File still missing → click `🔗` again to detach, then re-attach to a different file.
+
+## Local snapshots (`!local`)
+
+A third flow, alongside the icons above: explicit push/pull of named JSON snapshots
+into a folder you pick. Nothing automatic — you decide when a snapshot is written.
+
+**Setup:** `!local attach` opens a folder picker. Then `!local push` writes
+`feed.json` there.
+
+| Command | Effect |
+|---|---|
+| `!local` | Status: folder, permission, last sync, in-sync vs unsaved. |
+| `!local attach` | Pick the folder snapshots live in. |
+| `!local list` | List `.json` snapshots in that folder. |
+| `!local push [name]` | Write a snapshot. Default name `feed` → `feed.json`. |
+| `!local pull [name]` | Load a snapshot. **Replaces** all entries, after a confirm. |
+| `!local delete <name>` | Delete that snapshot file. Your feed is untouched. |
+| `!local off` | Forget the folder on this device. Files are kept. |
+
+Names are bare words — no quotes, no paths. `!local push draft` → `draft.json`.
+
+Notes:
+
+- Files are plain `{config, entries}` — the same JSON format documented above, so
+  they are greppable, diffable, and readable by the `↑ Open` flow too.
+- A snapshot made by `!cloud` can still be pulled here: an encrypted envelope is
+  recognised by its `ct` field and prompts for the passphrase.
+- Folder permission does not survive a browser restart — the first `!local` command
+  in a new session re-prompts. Expected, not an error.
+- No File System Access API (Firefox / Safari / plain HTTP)? `!local push` downloads
+  the file and `!local pull` opens a file picker instead. Same commands.
+- `!local` does not yet drive the `☁` indicator, which still reflects cloud state
+  only. Use bare `!local` to see local sync status.
 
 ## URL parameters
 

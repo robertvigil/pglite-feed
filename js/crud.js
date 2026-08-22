@@ -126,26 +126,40 @@ export function setupCrud(db, isReadOnly, refreshFn) {
     searchInput.disabled = true;
     searchInput.value = '';
 
-    await db.exec('DELETE FROM feed;');
-
+    // The DELETE and the reload are one transaction: a failure part-way through
+    // must not leave the feed table emptied or half-populated. Every import route
+    // (!local pull, !cloud pull, the legacy file-open) lands here.
     const total = entries.length;
-    for (let i = 0; i < entries.length; i++) {
-      const row = entries[i];
-      await db.query(
-        'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
-        [row.feed_date, row.feed_content]
-      );
-      if (i % 25 === 0 || i === entries.length - 1) {
-        searchInput.placeholder = `Loading ${i + 1} / ${total}...`;
-        await new Promise(r => setTimeout(r, 0));
+    await db.exec('BEGIN;');
+    try {
+      await db.exec('DELETE FROM feed;');
+      for (let i = 0; i < entries.length; i++) {
+        const row = entries[i];
+        await db.query(
+          'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
+          [row.feed_date, row.feed_content]
+        );
+        if (i % 25 === 0 || i === entries.length - 1) {
+          searchInput.placeholder = `Loading ${i + 1} / ${total}...`;
+          await new Promise(r => setTimeout(r, 0));
+        }
       }
-    }
 
-    for (const [key, value] of Object.entries(jsonConfig)) {
-      await db.query(
-        "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
-        [key, value]
-      );
+      for (const [key, value] of Object.entries(jsonConfig)) {
+        await db.query(
+          "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
+          [key, value]
+        );
+      }
+
+      await db.exec('COMMIT;');
+    } catch (err) {
+      await db.exec('ROLLBACK;');
+      searchInput.disabled = false;
+      searchInput.value = savedSearch;
+      searchInput.placeholder = savedPlaceholder;
+      alert('Import failed: ' + err.message);
+      return false;
     }
 
     searchInput.disabled = false;

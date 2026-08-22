@@ -193,6 +193,53 @@ Entries can link to static pages hosted alongside the feed:
 
 The feed app has no awareness of these pages — they're just URLs in the content. The auth boundary is the web server's job.
 
+## Local snapshots (`!local`)
+
+The same push/pull model as `!cloud`, but the snapshots are plain JSON files in a
+folder you choose on this machine — no account, no network, no encryption.
+
+**One-time setup**
+
+1. Run `!local attach` in the search bar. A folder picker opens; choose (or make) a
+   directory to keep snapshots in.
+2. Run `!local push`. That writes `feed.json` into the folder.
+
+The folder is remembered per device. Browsers do **not** persist folder permission
+across sessions, so the first `!local` command after a browser restart re-prompts —
+that's expected, not an error.
+
+**Commands** (all in the search bar)
+
+| Command | What it does |
+|---|---|
+| `!local` | Show status: folder, permission, last sync, in-sync vs unsaved |
+| `!local attach` | Pick the folder snapshots live in |
+| `!local list` | List the `.json` snapshots in that folder |
+| `!local push [name]` | Write a snapshot (default name `feed`) |
+| `!local pull [name]` | Load a snapshot (**replaces** local data) |
+| `!local delete <name>` | Delete that snapshot file — your data is untouched |
+| `!local off` | Forget the folder on this device (files are kept) |
+
+Names are bare words, no quotes and no paths: `!local push before-trip` writes
+`before-trip.json` beside the default one.
+
+**Notes**
+
+- **Files are plain, unencrypted `{config, entries}`** — the same shape the app has
+  always exported. That's deliberate: PGlite's IndexedDB store is itself unencrypted,
+  so encrypting a backup sitting next to a plaintext browser profile buys nothing.
+  If the folder is inside a synced directory (Dropbox, Syncthing), plaintext does
+  leave the machine — use `!cloud` for that case.
+- Snapshots written by `!cloud` **can** be pulled locally: `!local pull` detects an
+  encrypted envelope by its `ct` field and asks for the passphrase. Only writing is
+  simplified.
+- **No File System Access API?** (Firefox, Safari, plain HTTP) `!local` still works —
+  `push` downloads the file and `pull` opens a file picker. Same commands, degraded
+  transport underneath.
+- `!local` and `!cloud` are currently independent — attaching a folder does not
+  disconnect the cloud, and the `☁` indicator still reflects **cloud** state only.
+  One-mode-at-a-time and a `💾` glyph are planned.
+
 ## Data privacy
 
 - All data lives in your browser's IndexedDB
