@@ -167,7 +167,9 @@ async function handleCommand(input) {
   const parts = raw.substring(1).split(/\s+/);
   const cmd = parts[0]?.toLowerCase();
 
-  if (cmd === 'cloud') {
+  // Both transports live in cloud.js behind one command() surface — see
+  // ROADMAP.md "!local — one sync surface, two transports".
+  if (cmd === 'cloud' || cmd === 'local') {
     const handled = await cloud.command(cmd, parts.slice(1));
     if (handled) document.getElementById('search').value = '';
     return handled;

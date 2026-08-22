@@ -553,8 +553,258 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     return '';
   }
 
+  // ==========================================================================
+  // !local — the second transport. Same verbs as !cloud, a directory on disk
+  // instead of a jsonbin collection. See ROADMAP.md "!local — one sync surface,
+  // two transports" for the reasoning behind each choice here.
+  //
+  // PHASE 1: added alongside everything. Nothing removed, and the ☁ indicator
+  // still reflects cloud only — mutual exclusion and the 💾 glyph are phase 2.
+  // ==========================================================================
+
+  // Local snapshots are files, so the default name is the app's own filename
+  // (activities.json / feed.json) rather than cloud's "main". That makes
+  // `!local push` land on exactly the file the app has always written.
+  const LOCAL_DEFAULT = appKind;
+  const LK = { config: `${appKind}.local.config`, state: `${appKind}.local.state` };
+  const DIR_KEY = 'localDir'; // FileSystemDirectoryHandle in the module's IDB store
+
+  const hasFSDir = () => 'showDirectoryPicker' in window && window.isSecureContext;
+  const fileFor = (name) => `${nameOf(name)}.json`;
+  const nameOf = (filename) => filename.replace(/\.json$/i, '');
+
+  const loadLocalCfg = () => { try { return JSON.parse(localStorage.getItem(LK.config) || 'null'); } catch { return null; } };
+  const saveLocalCfg = (c) => localStorage.setItem(LK.config, JSON.stringify(c));
+  const loadLocalState = () => { try { return JSON.parse(localStorage.getItem(LK.state) || 'null'); } catch { return null; } };
+  const saveLocalState = (s) => localStorage.setItem(LK.state, JSON.stringify(s));
+
+  // Returns a directory handle with readwrite permission, or null. Permission does
+  // NOT survive a browser session, so this may prompt — that is normal, not an error.
+  async function ensureDir({ prompt = true } = {}) {
+    const h = await idbGet(SDB, DIR_KEY);
+    if (!h) return null;
+    let perm = await h.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted' && prompt) perm = await h.requestPermission({ mode: 'readwrite' });
+    return perm === 'granted' ? h : null;
+  }
+
+  // --- no-FSA fallbacks: what ↓ and ↑ used to do, behind the same command ---
+  function downloadJson(obj, filename) {
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function pickJsonViaInput() {
+    return new Promise((resolve) => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.json,application/json';
+      inp.style.display = 'none';
+      inp.addEventListener('change', async () => {
+        const f = inp.files && inp.files[0];
+        inp.remove();
+        if (!f) return resolve(null);
+        try { resolve({ name: nameOf(f.name), text: await f.text() }); }
+        catch { resolve(null); }
+      });
+      document.body.appendChild(inp);
+      inp.click();
+    });
+  }
+
+  // Decision 2: written plain, read either way. An envelope is recognised by `ct`.
+  async function decodeLocal(text) {
+    const obj = JSON.parse(text);
+    if (obj && obj.ct) {
+      if (obj.app && obj.app !== appKind) throw new Error(`that file is a ${obj.app} snapshot`);
+      const passphrase = await ensurePassphrase();
+      if (!passphrase) return null;
+      try { return await decryptEnvelope(obj, passphrase); }
+      catch { await idbDel(SDB, 'passphrase'); throw new Error('decryption failed — wrong passphrase? It has been forgotten; try again.'); }
+    }
+    return obj; // plain {config, entries} or a bare array
+  }
+
+  async function doLocalAttach() {
+    if (!hasFSDir()) {
+      alert(
+        'This browser has no File System Access API, so there is no folder to attach.\n\n' +
+        '!local still works — it falls back to download / file-picker:\n' +
+        '  !local push   downloads the JSON\n' +
+        '  !local pull   opens a file picker'
+      );
+      return;
+    }
+    let dir;
+    try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); }
+    catch { return; } // user cancelled
+    await idbSet(SDB, DIR_KEY, dir);
+    saveLocalCfg({ backend: 'fsdir', dirName: dir.name });
+    alert(`Local folder attached: ${dir.name}\n\nNext:  !local push   writes ${fileFor(LOCAL_DEFAULT)} there.`);
+  }
+
+  async function doLocalStatus() {
+    const cfg = loadLocalCfg();
+    const st = loadLocalState();
+    if (!cfg && !hasFSDir()) {
+      alert(
+        `Local — ${appKind}\n\n` +
+        `Mode:      download / file-picker (no File System Access API here)\n` +
+        `Last sync: ${st ? `"${st.name}" ${fmt(st.savedAt)}` : 'never'}\n\n` +
+        `!local push · !local pull`
+      );
+      return;
+    }
+    if (!cfg) {
+      alert('Local: no folder attached.\n\nSet up:\n  !local attach\nThen:\n  !local push  /  !local pull  /  !local list');
+      return;
+    }
+    const dir = await ensureDir({ prompt: false });
+    let dirty = '—';
+    try { const h = await sha256Hex(stable(await buildExportData())); dirty = (st && st.hash === h) ? 'in sync' : 'unsaved changes'; } catch { /* ignore */ }
+    alert(
+      `Local status — ${appKind}\n\n` +
+      `Folder:     ${cfg.dirName}\n` +
+      `Permission: ${dir ? 'granted' : 'needs re-grant (new browser session)'}\n` +
+      `Encryption: off — files are plain JSON\n` +
+      `Last sync:  ${st ? `"${st.name}" ${fmt(st.savedAt)}` : 'never'}\n` +
+      `State:      ${dirty}\n\n` +
+      `!local push · !local pull · !local list · !local delete <name> · !local off`
+    );
+  }
+
+  async function doLocalList() {
+    if (!hasFSDir()) { alert('No folder to list in this browser — !local uses download / file-picker here.'); return; }
+    const dir = await ensureDir();
+    if (!dir) { alert('No folder attached (or permission declined). Run:  !local attach'); return; }
+    busy = true; // phase 2: drive the indicator; for now local ops leave ☁ alone
+    try {
+      const out = [];
+      for await (const [fname, h] of dir.entries()) {
+        if (h.kind !== 'file' || !/\.json$/i.test(fname)) continue;
+        let size = null, mtime = null;
+        try { const f = await h.getFile(); size = f.size; mtime = new Date(f.lastModified).toISOString(); } catch { /* ignore */ }
+        out.push({ name: nameOf(fname), size, savedAt: mtime });
+      }
+      out.sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+      if (!out.length) alert(`No .json files in ${dir.name} yet.\n\nCreate one with:  !local push`);
+      else alert(
+        `Local snapshots in ${dir.name} (${out.length}):\n\n` +
+        out.map((s) => `• ${s.name} — ${fmt(s.savedAt)}${s.size != null ? ` (${Math.round(s.size / 1024)} KB)` : ''}`).join('\n') +
+        `\n\nPull:  !local pull <name>    ·    Delete:  !local delete <name>`
+      );
+    } catch (e) { alert('List failed: ' + e.message); }
+    finally { busy = false; updateDirty(); }
+  }
+
+  async function doLocalPush(name) {
+    busy = true; // phase 2: drive the indicator; for now local ops leave ☁ alone
+    try {
+      const data = await buildExportData();
+      const count = Array.isArray(data) ? data.length : (data.entries ? data.entries.length : 0);
+      const savedAt = new Date().toISOString();
+
+      if (!hasFSDir()) {
+        downloadJson(data, fileFor(name));
+        saveLocalState({ name, hash: await sha256Hex(stable(data)), savedAt });
+        return;
+      }
+      const dir = await ensureDir();
+      if (!dir) { alert('No folder attached (or permission declined). Run:  !local attach'); return; }
+
+      // Warn before clobbering a file this device did not write most recently.
+      let existed = false;
+      try { await dir.getFileHandle(fileFor(name)); existed = true; } catch { /* new file */ }
+      if (existed) {
+        const st = loadLocalState();
+        if (!st || st.name !== name) {
+          if (!confirm(`${fileFor(name)} already exists in ${dir.name}.\n\nOverwrite it with this device's data?`)) return;
+        }
+      }
+      const fh = await dir.getFileHandle(fileFor(name), { create: true });
+      const w = await fh.createWritable();
+      await w.write(JSON.stringify(data, null, 2));
+      await w.close();
+      saveLocalState({ name, hash: await sha256Hex(stable(data)), savedAt });
+      alert(`Pushed "${name}" — ${count} entries → ${dir.name}/${fileFor(name)}`);
+    } catch (e) { alert('Push failed: ' + e.message); }
+    finally { busy = false; updateDirty(); }
+  }
+
+  async function doLocalPull(name) {
+    busy = true; // phase 2: drive the indicator; for now local ops leave ☁ alone
+    try {
+      let text = null, pulledName = name;
+
+      if (!hasFSDir()) {
+        const picked = await pickJsonViaInput();
+        if (!picked) return;
+        text = picked.text; pulledName = picked.name;
+      } else {
+        const dir = await ensureDir();
+        if (!dir) { alert('No folder attached (or permission declined). Run:  !local attach'); return; }
+        let fh;
+        try { fh = await dir.getFileHandle(fileFor(name)); }
+        catch { alert(`No file named ${fileFor(name)} in ${dir.name}.\n\nSee what's there:  !local list`); return; }
+        text = await (await fh.getFile()).text();
+      }
+
+      if (!confirm(`Replace ALL local ${appKind} data with "${pulledName}"?\n\nThis cannot be undone.`)) return;
+
+      let data;
+      try { data = await decodeLocal(text); }
+      catch (e) { alert('Pull failed: ' + e.message); return; }
+      if (data == null) return;
+
+      const ok = await importJsonData(data, `local:${pulledName}`);
+      if (ok) {
+        await refresh();
+        saveLocalState({ name: pulledName, hash: await sha256Hex(stable(data)), savedAt: new Date().toISOString() });
+      }
+    } catch (e) { alert('Pull failed: ' + e.message); }
+    finally { busy = false; updateDirty(); }
+  }
+
+  async function doLocalDelete(name) {
+    if (!hasFSDir()) { alert('Nothing to delete — !local uses download / file-picker in this browser.'); return; }
+    if (!name) { alert('Usage: !local delete <name>\n\nList snapshots:  !local list'); return; }
+    const dir = await ensureDir();
+    if (!dir) { alert('No folder attached (or permission declined). Run:  !local attach'); return; }
+    try { await dir.getFileHandle(fileFor(name)); }
+    catch { alert(`No file named ${fileFor(name)} in ${dir.name}.`); return; }
+    if (!confirm(`Permanently DELETE ${dir.name}/${fileFor(name)}?\n\nThis deletes only that file — your local data is untouched. Cannot be undone.`)) return;
+    try {
+      await dir.removeEntry(fileFor(name));
+      if (loadLocalState()?.name === name) localStorage.removeItem(LK.state);
+      alert(`Deleted ${fileFor(name)}.`);
+    } catch (e) { alert('Delete failed: ' + e.message); }
+  }
+
+  async function doLocalOff() {
+    if (!confirm('Detach the local folder on this device?\n\n(The files in it are not deleted.)')) return;
+    localStorage.removeItem(LK.config);
+    localStorage.removeItem(LK.state);
+    await idbDel(SDB, DIR_KEY);
+    updateDirty();
+    alert('Local folder detached on this device.');
+  }
+
   async function command(cmd, args) {
     try {
+      if (cmd === 'local') {
+        const sub = (args[0] || '').toLowerCase();
+        if (!sub) await doLocalStatus();
+        else if (sub === 'attach') await doLocalAttach();
+        else if (sub === 'push') await doLocalPush(args[1] || LOCAL_DEFAULT);
+        else if (sub === 'pull') await doLocalPull(args[1] || LOCAL_DEFAULT);
+        else if (sub === 'list') await doLocalList();
+        else if (sub === 'delete') await doLocalDelete(args[1]);
+        else if (sub === 'off') await doLocalOff();
+        else alert(`Unknown !local subcommand: "${sub}"\n\nTry:  !local · !local attach · !local push · !local pull · !local list · !local delete <name> · !local off`);
+        return true;
+      }
       if (cmd === 'cloud') {
         const sub = (args[0] || '').toLowerCase();
         if (!sub) await doStatus();
