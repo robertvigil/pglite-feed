@@ -296,9 +296,14 @@ Names are bare words, no quotes and no paths: `!local push before-trip` writes
 - **No File System Access API?** (Firefox, Safari, plain HTTP) `!local` still works —
   `push` downloads the file and `pull` opens a file picker. Same commands, degraded
   transport underneath.
-- `!local` and `!cloud` are currently independent — attaching a folder does not
-  disconnect the cloud, and the `☁` indicator still reflects **cloud** state only.
-  One-mode-at-a-time and a `💾` glyph are planned.
+- **One transport at a time.** Turning on `!local` disconnects `!cloud` and vice
+  versa — you are asked to confirm the switch, never silently detached. Bare
+  `!local` / `!cloud` both report which one is ACTIVE.
+- The status-line indicator follows the active transport: `☁` for cloud, `💾` for
+  local, hidden when neither is on. Its tooltip names the transport, so "in sync"
+  is never ambiguous. Clicking it pushes to whichever transport is active.
+- If the attached folder's permission has lapsed (new browser session), the
+  indicator turns amber with `⚠` — click it once to re-grant, then it resumes.
 
 ## URL parameters
 

@@ -252,6 +252,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
   const K = { config: `${NS}.config`, bins: `${NS}.bins`, state: `${NS}.state`, device: `${NS}.device` };
   const SDB = `pglite-${appKind}-cloud`; // IndexedDB name for the secrets kv store
   const DEFAULT = 'main';
+  const MODE_KEY = `${appKind}.sync.mode`; // 'cloud' | 'local' | absent — see "One mode at a time"
 
   // --- non-secret persistence (localStorage) ---
   const loadConfig = () => { try { const c = JSON.parse(localStorage.getItem(K.config) || 'null'); return (c && c.collectionId) ? c : null; } catch { return null; } };
@@ -307,26 +308,58 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     ind.id = 'cloud-indicator';
     ind.style.cssText = 'display:none;font-size:12px;margin:-4px 0 8px;opacity:.8;cursor:pointer;user-select:none;';
     bar.insertAdjacentElement('afterend', ind);
-    ind.addEventListener('click', () => {
-      // Push to the snapshot you're currently synced with (not always "main"),
-      // so the one-click follows your named-snapshot workflow.
-      if (ind.dataset.state === 'dirty') doPush(loadState()?.name || DEFAULT);
-      else doStatus();
+    ind.addEventListener('click', async () => {
+      // Push to the snapshot you're currently synced with (not always the default),
+      // so the one-click follows your named-snapshot workflow — and to whichever
+      // transport is active, since only one can be.
+      const mode = activeMode();
+      if (ind.dataset.state === 'perm') { await ensureDir(); updateDirty(); return; }
+      if (ind.dataset.state === 'dirty') {
+        if (mode === 'local') await doLocalPush(loadLocalState()?.name || LOCAL_DEFAULT);
+        else await doPush(loadState()?.name || DEFAULT);
+        return;
+      }
+      if (mode === 'local') await doLocalStatus(); else await doStatus();
     });
   })();
+  // The indicator is one line under the search bar, shared by both transports.
+  // Only the glyph and the wording change with the mode — position, colors and
+  // click-to-push are identical, per ROADMAP "Indicator".
+  //
+  // A tooltip that says only «In sync with "main"» is ambiguous once there are two
+  // backends, so every message names its transport. See ROADMAP "Found while
+  // testing phase 1".
   function setInd(state, title, name) {
     if (!ind) return;
+    const mode = activeMode();
+    const glyph = mode === 'local' ? '💾' : '☁';
+    const dflt = mode === 'local' ? LOCAL_DEFAULT : DEFAULT;
+    const where = mode === 'local' ? (loadLocalCfg()?.dirName || 'the local folder') : 'the cloud';
     ind.dataset.state = state || '';
-    if (state === 'busy') { ind.style.display = ''; ind.textContent = '☁ …'; ind.style.color = '#888'; ind.title = 'Working…'; }
-    else if (state === 'synced') { ind.style.display = ''; ind.textContent = '☁ synced'; ind.style.color = '#888'; ind.title = title || 'In sync with the cloud.'; }
-    else if (state === 'dirty') {
+    ind.dataset.mode = mode || '';
+    if (state === 'busy') {
+      ind.style.display = ''; ind.textContent = `${glyph} …`;
+      ind.style.color = '#888'; ind.title = 'Working…';
+    } else if (state === 'synced') {
+      ind.style.display = ''; ind.textContent = `${glyph} synced`;
+      ind.style.color = '#888'; ind.title = title || `In sync with ${where}.`;
+    } else if (state === 'perm') {
+      // Local only. FSA permission does not survive a browser session; that is a
+      // distinct condition from "unsaved" — we cannot write, so we do not claim to.
+      ind.style.display = ''; ind.textContent = `${glyph} ${where} ⚠ — click to re-grant`;
+      ind.style.color = '#ffb000';
+      ind.title = title || 'Folder permission expired. Click to grant it again.';
+    } else if (state === 'dirty') {
       ind.style.display = '';
       // Name the target snapshot when it isn't the default, so a click is never a surprise.
-      ind.textContent = (name && name !== DEFAULT) ? `☁ unsaved — click to push "${name}"` : '☁ unsaved — click to push';
+      ind.textContent = (name && name !== dflt)
+        ? `${glyph} unsaved — click to push "${name}"`
+        : `${glyph} unsaved — click to push`;
       ind.style.color = '#ffb000';
-      ind.title = `Local changes not pushed. Click to push to "${name || DEFAULT}".`;
+      ind.title = `Local changes not pushed to ${where}. Click to push to "${name || dflt}".`;
+    } else {
+      ind.style.display = 'none';
     }
-    else { ind.style.display = 'none'; }
   }
 
   let busy = false; // true only while an op holds the spinner; the op clears it before settling
@@ -334,12 +367,31 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
   function updateDirty() { clearTimeout(dirtyTimer); dirtyTimer = setTimeout(_updateDirty, 300); }
   async function _updateDirty() {
     if (busy) return; // a refresh()-driven tick fired mid-op — don't clobber the spinner
-    if (!loadConfig()) { setInd(); return; }
+    const mode = activeMode();
+    if (!mode) { setInd(); return; } // disconnected — indicator hidden entirely
     let data;
     try { data = await buildExportData(); } catch { return; }
     const hash = await sha256Hex(stable(data));
+
+    if (mode === 'local') {
+      const cfg = loadLocalCfg();
+      const st = loadLocalState();
+      // Check permission without prompting: a background dirty tick must never
+      // pop a permission dialog the user did not ask for.
+      if (cfg?.backend === 'fsdir' && !(await ensureDir({ prompt: false }))) {
+        setInd('perm', `Folder "${cfg.dirName}" needs permission again (new browser session). Click to re-grant.`);
+        return;
+      }
+      if (st && st.hash === hash) {
+        setInd('synced', `In sync with local snapshot "${st.name}"${cfg?.dirName ? ` in ${cfg.dirName}` : ''} (${fmt(st.savedAt)}).`);
+      } else {
+        setInd('dirty', null, st?.name || LOCAL_DEFAULT);
+      }
+      return;
+    }
+
     const st = loadState();
-    if (st && st.hash === hash) setInd('synced', `In sync with "${st.name}" (${fmt(st.savedAt)}).`);
+    if (st && st.hash === hash) setInd('synced', `In sync with cloud snapshot "${st.name}" (${fmt(st.savedAt)}).`);
     else setInd('dirty', null, st?.name || DEFAULT);
   }
 
@@ -392,12 +444,20 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
       alert('Usage: !cloud jsonbin <collectionId>\n\nIn your jsonbin.io dashboard create a Collection and paste its ID here.');
       return;
     }
+    if (!(await claimMode('cloud'))) return;
     saveConfig({ backend: 'jsonbin', collectionId });
     const k = await ensureMasterKey();
     if (!k) alert(`Saved collection ${collectionId}. Master key not entered yet — you'll be prompted on your first !cloud push.`);
     else alert(`Cloud configured — jsonbin collection ${collectionId}.\n\nNext:  !cloud push   uploads the "${DEFAULT}" snapshot.`);
     updateDirty();
   }
+
+  // A phase-1 install can have both transports configured at once. Say so plainly
+  // in whichever status the user asks for, rather than silently favouring one.
+  const overlapNote = () => bothOn()
+    ? `\n⚠ Both transports are configured on this device. "${activeMode()}" is active.\n` +
+      `   Turn the other off:  !${activeMode() === 'cloud' ? 'local' : 'cloud'} off\n`
+    : '';
 
   async function doStatus() {
     const cfg = loadConfig();
@@ -411,7 +471,9 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     let dirty = '—';
     try { const h = await sha256Hex(stable(await buildExportData())); dirty = (st && st.hash === h) ? 'in sync' : 'unsaved changes'; } catch { /* ignore */ }
     alert(
-      `Cloud status — ${appKind}\n\n` +
+      `Cloud status — ${appKind}\n` +
+      `Mode:         ${activeMode() === 'cloud' ? 'ACTIVE' : 'inactive — !local is the active transport'}\n` +
+      overlapNote() + `\n` +
       `Backend:      jsonbin.io\n` +
       `Collection:   ${cfg.collectionId}\n` +
       `Device:       ${device}\n` +
@@ -529,11 +591,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
 
   async function doOff() {
     if (!confirm('Disconnect cloud on this device and forget the stored master key + passphrase?\n\n(Your remote snapshots are not deleted.)')) return;
-    localStorage.removeItem(K.config);
-    localStorage.removeItem(K.bins);
-    localStorage.removeItem(K.state);
-    await idbDel(SDB, 'masterKey');
-    await idbDel(SDB, 'passphrase');
+    await detachCloud();
     updateDirty();
     alert('Cloud disconnected on this device.');
   }
@@ -558,8 +616,10 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
   // instead of a jsonbin collection. See ROADMAP.md "!local — one sync surface,
   // two transports" for the reasoning behind each choice here.
   //
-  // PHASE 1: added alongside everything. Nothing removed, and the ☁ indicator
-  // still reflects cloud only — mutual exclusion and the 💾 glyph are phase 2.
+  // PHASE 2: mutual exclusion is enforced at the activation points (see claimMode),
+  // and the indicator now follows the active mode — 💾 for local, ☁ for cloud, with
+  // a local-only "permission expired" state. Deleting the 🔗/📝 attach UI and the
+  // ↓/↑ buttons is phases 3 and 4.
   // ==========================================================================
 
   // Local snapshots are files, so the default name is the app's own filename
@@ -577,6 +637,74 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
   const saveLocalCfg = (c) => localStorage.setItem(LK.config, JSON.stringify(c));
   const loadLocalState = () => { try { return JSON.parse(localStorage.getItem(LK.state) || 'null'); } catch { return null; } };
   const saveLocalState = (s) => localStorage.setItem(LK.state, JSON.stringify(s));
+
+  // --- one mode at a time ---------------------------------------------------
+  // ROADMAP "One mode at a time": a single sync.mode ('cloud' | 'local' | null)
+  // replaces two overlapping state machines. It is stored explicitly rather than
+  // inferred on every read, so the indicator never has to guess which transport a
+  // "synced" claim describes.
+  const loadMode = () => localStorage.getItem(MODE_KEY);
+  const saveMode = (m) => { if (m) localStorage.setItem(MODE_KEY, m); else localStorage.removeItem(MODE_KEY); };
+
+  const cloudOn = () => !!loadConfig();
+  const localOn = () => !!loadLocalCfg();
+  const bothOn = () => cloudOn() && localOn();
+
+  // Resolve the active transport, healing a missing or stale mode key.
+  function activeMode() {
+    const c = cloudOn(), l = localOn();
+    const m = loadMode();
+    if (m === 'cloud' && c) return 'cloud';
+    if (m === 'local' && l) return 'local';
+    if (c && !l) { saveMode('cloud'); return 'cloud'; }
+    if (l && !c) { saveMode('local'); return 'local'; }
+    if (c && l) {
+      // A phase-1 install can legitimately have both configured. Destroying one
+      // without asking would be rude, so pick whichever was used most recently and
+      // let the status commands point out the overlap.
+      const pick = (loadLocalState()?.savedAt || '') > (loadState()?.savedAt || '') ? 'local' : 'cloud';
+      saveMode(pick);
+      return pick;
+    }
+    saveMode(null);
+    return null;
+  }
+
+  // Silent detach halves — the interactive !cloud off / !local off wrap these.
+  async function detachCloud() {
+    localStorage.removeItem(K.config);
+    localStorage.removeItem(K.bins);
+    localStorage.removeItem(K.state);
+    await idbDel(SDB, 'masterKey');
+    await idbDel(SDB, 'passphrase');
+    if (loadMode() === 'cloud') saveMode(null);
+  }
+  async function detachLocal() {
+    localStorage.removeItem(LK.config);
+    localStorage.removeItem(LK.state);
+    await idbDel(SDB, DIR_KEY);
+    if (loadMode() === 'local') saveMode(null);
+  }
+
+  // Activation gate. Turning one transport on turns the other off — with consent,
+  // never silently. Returns false if the user declined, in which case the caller
+  // must not activate.
+  async function claimMode(target) {
+    const other = target === 'cloud' ? 'local' : 'cloud';
+    const otherOn = other === 'cloud' ? cloudOn() : localOn();
+    if (otherOn) {
+      const what = other === 'cloud'
+        ? 'the jsonbin cloud connection (its master key and passphrase are forgotten on this device; remote snapshots are kept)'
+        : `the local folder "${loadLocalCfg()?.dirName || ''}" (the files in it are kept)`;
+      if (!confirm(
+        `${appKind} syncs with one transport at a time.\n\n` +
+        `Turning on !${target} disconnects ${what}.\n\nSwitch to !${target}?`
+      )) return false;
+      if (other === 'cloud') await detachCloud(); else await detachLocal();
+    }
+    saveMode(target);
+    return true;
+  }
 
   // Returns a directory handle with readwrite permission, or null. Permission does
   // NOT survive a browser session, so this may prompt — that is normal, not an error.
@@ -637,9 +765,10 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
       );
       return;
     }
+    if (!(await claimMode('local'))) return;
     let dir;
     try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); }
-    catch { return; } // user cancelled
+    catch { saveMode(loadConfig() ? 'cloud' : null); return; } // user cancelled the picker
     await idbSet(SDB, DIR_KEY, dir);
     saveLocalCfg({ backend: 'fsdir', dirName: dir.name });
     alert(`Local folder attached: ${dir.name}\n\nNext:  !local push   writes ${fileFor(LOCAL_DEFAULT)} there.`);
@@ -665,7 +794,9 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     let dirty = '—';
     try { const h = await sha256Hex(stable(await buildExportData())); dirty = (st && st.hash === h) ? 'in sync' : 'unsaved changes'; } catch { /* ignore */ }
     alert(
-      `Local status — ${appKind}\n\n` +
+      `Local status — ${appKind}\n` +
+      `Mode:       ${activeMode() === 'local' ? 'ACTIVE' : 'inactive — !cloud is the active transport'}\n` +
+      overlapNote() + `\n` +
       `Folder:     ${cfg.dirName}\n` +
       `Permission: ${dir ? 'granted' : 'needs re-grant (new browser session)'}\n` +
       `Encryption: off — files are plain JSON\n` +
@@ -679,7 +810,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
     if (!hasFSDir()) { alert('No folder to list in this browser — !local uses download / file-picker here.'); return; }
     const dir = await ensureDir();
     if (!dir) { alert('No folder attached (or permission declined). Run:  !local attach'); return; }
-    busy = true; // phase 2: drive the indicator; for now local ops leave ☁ alone
+    busy = true; setInd('busy');
     try {
       const out = [];
       for await (const [fname, h] of dir.entries()) {
@@ -700,7 +831,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
   }
 
   async function doLocalPush(name) {
-    busy = true; // phase 2: drive the indicator; for now local ops leave ☁ alone
+    busy = true; setInd('busy');
     try {
       const data = await buildExportData();
       const count = Array.isArray(data) ? data.length : (data.entries ? data.entries.length : 0);
@@ -734,7 +865,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
   }
 
   async function doLocalPull(name) {
-    busy = true; // phase 2: drive the indicator; for now local ops leave ☁ alone
+    busy = true; setInd('busy');
     try {
       let text = null, pulledName = name;
 
@@ -784,9 +915,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
 
   async function doLocalOff() {
     if (!confirm('Detach the local folder on this device?\n\n(The files in it are not deleted.)')) return;
-    localStorage.removeItem(LK.config);
-    localStorage.removeItem(LK.state);
-    await idbDel(SDB, DIR_KEY);
+    await detachLocal();
     updateDirty();
     alert('Local folder detached on this device.');
   }
