@@ -765,12 +765,18 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
       );
       return;
     }
-    if (!(await claimMode('local'))) return;
+    // Pick the folder BEFORE claiming the mode. claimMode() detaches the other
+    // transport (forgetting the cloud master key and passphrase), so it must not
+    // run until the user has actually committed to a directory — otherwise
+    // confirming the switch and then cancelling the picker leaves you disconnected
+    // from both.
     let dir;
     try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); }
-    catch { saveMode(loadConfig() ? 'cloud' : null); return; } // user cancelled the picker
+    catch { return; } // user cancelled — nothing has changed
+    if (!(await claimMode('local'))) return; // declined the switch — folder not attached
     await idbSet(SDB, DIR_KEY, dir);
     saveLocalCfg({ backend: 'fsdir', dirName: dir.name });
+    updateDirty(); // the glyph has to follow the mode change, not wait for the first push
     alert(`Local folder attached: ${dir.name}\n\nNext:  !local push   writes ${fileFor(LOCAL_DEFAULT)} there.`);
   }
 
