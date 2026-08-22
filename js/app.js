@@ -227,7 +227,13 @@ async function showLastUpdated() {
 // --- Main refresh ---
 async function refresh() {
   cloud?.updateDirty();
-  const searchQuery = document.getElementById('search').value;
+  // A "!" command is never a search. The input listener already skips them while
+  // typing, but refresh() is also called directly (e.g. after !local/!cloud pull,
+  // where importJsonData restores the command text into the box), and without this
+  // the view would render a search for the literal command string.
+  // In read-only mode "!" is not a command, so a leading "!" still searches.
+  const rawSearch = document.getElementById('search').value;
+  const searchQuery = (!isReadOnly && rawSearch.trim().startsWith('!')) ? '' : rawSearch;
   const parsed = parseSearch(searchQuery);
 
   const outputEl = document.getElementById('output');
