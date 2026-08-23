@@ -184,3 +184,87 @@ test('no-FSA: switching from cloud still requires a confirm', async () => {
   assert.ok(localStorage.getItem('feed.cloud.config'), 'declined: cloud survives');
   assert.equal(localStorage.getItem('feed.local.config'), null);
 });
+
+// --- phase 4: !local push/pull replace the ↓ / ↑ buttons ---
+
+test('no folder attached: push downloads instead of failing', async () => {
+  // Phase 4 deleted the ↓ button. A push with local mode not set up must still
+  // produce a file, or that capability is simply gone on FSA browsers.
+  const { api } = await boot();
+  const downloads = [];
+  document.createElement = ((orig) => (tag) => {
+    const el = orig(tag);
+    if (tag === 'a') Object.defineProperty(el, 'download', {
+      set(v) { downloads.push(v); }, get() { return downloads.at(-1); }, configurable: true });
+    return el;
+  })(document.createElement);
+  globalThis.Blob = class { constructor(parts) { this.parts = parts; } };
+  globalThis.URL = { createObjectURL: () => 'blob:x', revokeObjectURL() {} };
+
+  await api.command('local', ['push']);
+  assert.deepEqual(downloads, ['feed.json'], 'push fell back to a download');
+});
+
+test('a one-off download must not claim local mode or fake a snapshot', async () => {
+  // The ↓ button never changed how the app synced. Its replacement must not either:
+  // a throwaway export cannot silently disconnect !cloud or claim to be in sync.
+  const { api, indicator } = await boot();
+  cloudCfg();
+  globalThis.Blob = class {}; globalThis.URL = { createObjectURL: () => 'blob:x', revokeObjectURL() {} };
+
+  await api.command('local', ['push']);
+  assert.equal(localStorage.getItem('feed.local.config'), null, 'mode not claimed');
+  assert.equal(localStorage.getItem('feed.local.state'), null, 'no snapshot recorded');
+  assert.ok(localStorage.getItem('feed.cloud.config'), 'cloud still connected');
+  assert.equal(mode(), 'cloud');
+  await settle();
+  assert.match(indicator().textContent, /^☁/, 'still showing the cloud transport');
+});
+
+test('list and delete explain themselves when there is no folder', async () => {
+  const { api, calls } = await boot();
+  await api.command('local', ['list']);
+  assert.match(calls.alerts.at(-1), /no folder to list/i);
+  assert.match(calls.alerts.at(-1), /!local attach/);
+  await api.command('local', ['delete', 'x']);
+  assert.match(calls.alerts.at(-1), /no folder to delete from/i);
+});
+
+test('no folder attached: pull opens a file picker and imports what you choose', async () => {
+  // Phase 4 deleted the ↑ button; this is its replacement. The picked file is not a
+  // snapshot the app can find again, so no state may be recorded for it.
+  const { api } = await boot();
+  cloudCfg();
+  const PICKED = { config: {}, entries: [{ feed_date: '2026-02-02', feed_content: 'picked' }] };
+
+  let inputEl = null;
+  const origCreate = document.createElement;
+  document.createElement = (tag) => {
+    const el = origCreate(tag);
+    if (tag === 'input') {
+      inputEl = el;
+      el.files = [{ name: 'from-anywhere.json', text: async () => JSON.stringify(PICKED) }];
+      // the real element fires 'change' once the user picks; do that on click()
+      el.click = () => queueMicrotask(() => el._h?.change?.());
+    }
+    return el;
+  };
+
+  let imported = null;
+  const { setupCloud } = await import('../js/cloud.js?' + Math.random());
+  const api2 = setupCloud({
+    appKind: 'feed',
+    buildExportData: async () => ENTRIES,
+    importJsonData: async (data) => { imported = data; return true; },
+    refresh: async () => {},
+  });
+
+  await api2.command('local', ['pull']);
+  assert.ok(inputEl, 'a file input was created — the picker fallback ran');
+  assert.deepEqual(imported, PICKED, 'the chosen file was imported');
+  assert.equal(localStorage.getItem('feed.local.state'), null, 'a one-off import is not a snapshot');
+  assert.equal(localStorage.getItem('feed.local.config'), null, 'mode not claimed');
+  assert.ok(localStorage.getItem('feed.cloud.config'), 'cloud untouched');
+  document.createElement = origCreate;
+  void api;
+});

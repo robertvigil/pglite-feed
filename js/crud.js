@@ -237,52 +237,5 @@ export function setupCrud(db, refreshFn) {
     }
   });
 
-  // --- JSON Save (exports config + entries) ---
-  document.getElementById('save-json')?.addEventListener('click', async () => {
-    const data = await buildExportData();
-    const entries = Array.isArray(data) ? data : data.entries;
-    if (entries.length === 0) {
-      alert('No entries to save.');
-      return;
-    }
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'feed.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  // --- JSON Open ---
-  document.getElementById('open-json')?.addEventListener('click', () => {
-    document.getElementById('json-input').click();
-  });
-  document.getElementById('json-input')?.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (!confirm(`You are about to replace all existing content with "${file.name}".\n\nThis cannot be undone. Continue?`)) {
-      e.target.value = '';
-      return;
-    }
-
-    const text = await file.text();
-    let raw;
-    try {
-      raw = JSON.parse(text);
-    } catch (err) {
-      alert('Invalid JSON file: ' + err.message);
-      return;
-    }
-
-    const ok = await importJsonData(raw, file.name);
-    if (ok) {
-      await refreshFn();
-    }
-    e.target.value = '';
-  });
-
   return { buildExportData, importJsonData };
 }

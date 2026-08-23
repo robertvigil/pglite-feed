@@ -824,9 +824,19 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   }
 
   async function doLocalList() {
-    if (!hasFSDir()) { alert('No folder to list in this browser — !local uses download / file-picker here.'); return; }
+    if (localTransport() !== 'folder') {
+      alert(
+        'There is no folder to list.\n\n' +
+        (hasFSDir()
+          ? 'Attach one with:  !local attach'
+          : 'This browser has no File System Access API, so !local transports through\n' +
+            'download / file-picker instead. Snapshots exist as files you saved, but the\n' +
+            'app cannot browse or manage them — use !local push / !local pull.')
+      );
+      return;
+    }
     const dir = await ensureDir();
-    if (!dir) { alert('No folder attached (or permission declined). Run:  !local attach'); return; }
+    if (!dir) { alert('Folder permission declined. Click the 💾 indicator to grant it.'); return; }
     busy = true; setInd('busy');
     try {
       const out = [];
@@ -847,6 +857,21 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
     finally { busy = false; updateDirty(); }
   }
 
+  // Which transport should a push/pull use, and does it count as a snapshot?
+  //
+  //   'folder'   — a directory is attached; read/write files in it, record state
+  //   'browser'  — local mode is on but there is no directory (no File System
+  //                Access API here); download / file-picker, still record state
+  //   'oneoff'   — local mode is not set up at all. Download / file-picker, but do
+  //                NOT record state and do NOT claim the mode: this is the one-off
+  //                export/import that the ↓ / ↑ buttons used to provide, and a
+  //                throwaway download must not silently disconnect !cloud.
+  function localTransport() {
+    const cfg = loadLocalCfg();
+    if (!cfg) return 'oneoff';
+    return cfg.backend === 'fsdir' && hasFSDir() ? 'folder' : 'browser';
+  }
+
   async function doLocalPush(name) {
     busy = true; setInd('busy');
     try {
@@ -854,13 +879,14 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
       const count = Array.isArray(data) ? data.length : (data.entries ? data.entries.length : 0);
       const savedAt = new Date().toISOString();
 
-      if (!hasFSDir()) {
+      const via = localTransport();
+      if (via !== 'folder') {
         downloadJson(data, fileFor(name));
-        saveLocalState({ name, hash: await sha256Hex(stable(data)), savedAt });
+        if (via === 'browser') saveLocalState({ name, hash: await sha256Hex(stable(data)), savedAt });
         return;
       }
       const dir = await ensureDir();
-      if (!dir) { alert('No folder attached (or permission declined). Run:  !local attach'); return; }
+      if (!dir) { alert('Folder permission declined. Click the 💾 indicator to grant it, or run:  !local attach'); return; }
 
       // Warn before clobbering a file this device did not write most recently.
       let existed = false;
@@ -886,13 +912,14 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
     try {
       let text = null, pulledName = name;
 
-      if (!hasFSDir()) {
+      const via = localTransport();
+      if (via !== 'folder') {
         const picked = await pickJsonViaInput();
         if (!picked) return;
         text = picked.text; pulledName = picked.name;
       } else {
         const dir = await ensureDir();
-        if (!dir) { alert('No folder attached (or permission declined). Run:  !local attach'); return; }
+        if (!dir) { alert('Folder permission declined. Click the 💾 indicator to grant it, or run:  !local attach'); return; }
         let fh;
         try { fh = await dir.getFileHandle(fileFor(name)); }
         catch { alert(`No file named ${fileFor(name)} in ${dir.name}.\n\nSee what's there:  !local list`); return; }
@@ -909,17 +936,31 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
       const ok = await importJsonData(data, `local:${pulledName}`);
       if (ok) {
         await refresh();
-        saveLocalState({ name: pulledName, hash: await sha256Hex(stable(data)), savedAt: new Date().toISOString() });
+        // A one-off import is not a snapshot — don't claim to be in sync with a file
+        // the app has no way to find again.
+        if (via !== 'oneoff') {
+          saveLocalState({ name: pulledName, hash: await sha256Hex(stable(data)), savedAt: new Date().toISOString() });
+        }
       }
     } catch (e) { alert('Pull failed: ' + e.message); }
     finally { busy = false; updateDirty(); }
   }
 
   async function doLocalDelete(name) {
-    if (!hasFSDir()) { alert('Nothing to delete — !local uses download / file-picker in this browser.'); return; }
+    if (localTransport() !== 'folder') {
+      alert(
+        'There is no folder to delete from.\n\n' +
+        (hasFSDir()
+          ? 'Attach one with:  !local attach'
+          : 'This browser has no File System Access API, so !local transports through\n' +
+            'download / file-picker instead. Snapshots exist as files you saved, but the\n' +
+            'app cannot browse or manage them — use !local push / !local pull.')
+      );
+      return;
+    }
     if (!name) { alert('Usage: !local delete <name>\n\nList snapshots:  !local list'); return; }
     const dir = await ensureDir();
-    if (!dir) { alert('No folder attached (or permission declined). Run:  !local attach'); return; }
+    if (!dir) { alert('Folder permission declined. Click the 💾 indicator to grant it.'); return; }
     try { await dir.getFileHandle(fileFor(name)); }
     catch { alert(`No file named ${fileFor(name)} in ${dir.name}.`); return; }
     if (!confirm(`Permanently DELETE ${dir.name}/${fileFor(name)}?\n\nThis deletes only that file — your local data is untouched. Cannot be undone.`)) return;

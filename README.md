@@ -165,35 +165,17 @@ stale.
 Use `!local` (folder on disk) or `!cloud` (encrypted, remote) instead. Both are
 explicit push/pull with named snapshots. See the sections below.
 
-### ↓ Save / ↑ Open (Firefox / Safari / non-secure HTTP)
+### One-off export / import
 
-**Save (↓):** exports ALL entries as a JSON file via download. User picks the filename. Default: `feed.json`.
+The `↓` / `↑` toolbar buttons were deleted on 2026-08-22. `!local` covers both jobs,
+including when no folder is attached:
 
-**Open (↑):** replaces ALL existing content with the contents of a JSON file. Prompts with a warning before replacing. Complete replacement, not a merge.
+- `!local push` with no folder → downloads the JSON (what `↓` did)
+- `!local pull` with no folder → opens a file picker (what `↑` did)
 
-Traditional "Open File" / "Save File" mental model.
-
-### feed.json format
-
-Flat array (simple):
-```json
-[
-  {"feed_date": "2026-04-12", "feed_content": "Hello world"},
-  {"feed_date": "2026-04-12", "feed_content": "A note about links #links"}
-]
-```
-
-Object with config (includes site title and other settings):
-```json
-{
-  "config": {"site_title": "my site", "theme": "amber"},
-  "entries": [
-    {"feed_date": "2026-04-12", "feed_content": "Hello world"}
-  ]
-}
-```
-
-Both formats are supported on import. Export uses the object format when config exists.
+A push in that state is treated as a throwaway export: it does **not** turn local mode
+on, does not record a snapshot, and does not disconnect `!cloud`. Attach a folder when
+you want snapshots the app can track, list and delete.
 
 ## Cloud snapshots (encrypted, optional)
 
