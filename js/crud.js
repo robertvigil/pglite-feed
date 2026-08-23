@@ -24,7 +24,6 @@ export function setupCrud(db, refreshFn) {
   const createCancel = document.getElementById('create-cancel');
   const outputEl = document.getElementById('output');
 
-  document.getElementById('action-bar').style.display = 'flex';
 
   async function buildExportData() {
     const result = await db.query(`

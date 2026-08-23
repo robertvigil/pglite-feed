@@ -131,6 +131,16 @@ async function handleCommand(input) {
     return handled;
   }
 
+  // Open the repo README in a new tab. This must stay synchronous: it runs inside the
+  // Enter keydown and window.open() needs that user activation intact. No await
+  // executes before it for a !help command (the cloud/local branch above only awaits
+  // for those two verbs), so the popup is allowed. Don't add an await ahead of it.
+  if (cmd === 'help') {
+    window.open('https://github.com/robertvigil/pglite-feed#readme', '_blank', 'noopener');
+    document.getElementById('search').value = '';
+    return true;
+  }
+
   if (cmd === 'title') {
     const newTitle = parts.slice(1).join(' ');
     if (newTitle) {

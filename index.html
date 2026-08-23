@@ -8,7 +8,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
 </head>
 <body>
-  <h1><span id="home-link" style="cursor:pointer">[feed]</span></h1>
+  <div class="page-header">
+    <h1><span id="home-link" style="cursor:pointer">[feed]</span></h1>
+    <button id="create-toggle" title="New entry">✚</button>
+  </div>
 
   <div class="search-bar">
     <input type="text" id="search" placeholder='Search — "keyword", "-exclude", "#tag", "#" tag cloud, "after:" "before:" dates' autocomplete="off">
@@ -16,9 +19,6 @@
     <span id="clear-search" title="Clear search">&times;</span>
   </div>
 
-  <div class="action-bar" id="action-bar" style="display:none">
-    <button id="create-toggle" title="New entry">✚</button>
-  </div>
   <form class="create-form" id="create-form">
     <textarea id="new-content" class="content-input" rows="10" placeholder="content (use #tags for categories)" required></textarea>
     <div class="form-row">

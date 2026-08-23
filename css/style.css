@@ -34,6 +34,22 @@ body {
 [data-theme="plain"] tr.editing td input { background: #fff; border-color: #ccc; }
 h1 { color: var(--accent); margin: 0 0 8px; font-size: 1.2em; }
 
+/* Page header — title left, create action right. The button is a sibling of the
+   h1, not a child: a heading's content is its label, and #home-link is its own
+   click target. Sized to the h1 so it does not drive the row taller. */
+.page-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin: 0 0 8px;
+}
+.page-header h1 { margin: 0; }
+.page-header button {
+  padding: 0 2px; font-size: 18px; line-height: 1;
+  background: transparent; color: #666; border: none;
+  cursor: pointer; font-family: inherit;
+}
+.page-header button:hover { color: var(--accent); }
+
+
 /* Search bar */
 .search-bar { margin-bottom: 10px; position: relative; }
 .search-bar input {
@@ -98,24 +114,7 @@ td a { color: var(--accent); }
 .totals .label { color: #888; }
 .totals .value { color: var(--accent); font-weight: bold; }
 
-/* Action bar + create form */
-.action-bar {
-  display: flex; gap: 8px; align-items: center;
-  margin-bottom: 10px;
-}
-.action-bar button {
-  padding: 2px 8px; font-size: 22px;
-  background: transparent; color: #666; border: none;
-  cursor: pointer; font-family: inherit; line-height: 1;
-}
-.action-bar button:hover { color: var(--accent); }
-.attach-name {
-  color: #888; font-size: 0.85em; margin-left: 2px;
-  font-family: inherit;
-}
-.attach-name.granted { color: var(--accent); }
-.attach-name.needs-permission { color: #ffb000; cursor: pointer; }
-.attach-name.needs-permission::after { content: ' ⚠'; }
+/* Create form */
 .create-form {
   display: none; flex-direction: column; gap: 8px;
   margin-bottom: 15px; padding: 10px;
@@ -251,8 +250,7 @@ div.md-view { padding-top: 0; }
   font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
 }
 [data-theme="noir"] h1 { text-shadow: 0 0 24px rgba(56,225,255,.25); }
-[data-theme="noir"] .totals .label,
-[data-theme="noir"] .attach-name { color: #8b93a6; }
+[data-theme="noir"] .totals .label { color: #8b93a6; }
 [data-theme="noir"] #status { color: #6b7385; }
 
 /* search */
@@ -276,7 +274,7 @@ div.md-view { padding-top: 0; }
 [data-theme="noir"] td a { color: var(--accent); }
 
 /* action bar + create form + inline edit */
-[data-theme="noir"] .action-bar button,
+[data-theme="noir"] .page-header button,
 [data-theme="noir"] td.actions button,
 [data-theme="noir"] .create-form button,
 [data-theme="noir"] tr.editing .edit-row-2 button { color: #7a8296; }

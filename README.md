@@ -146,6 +146,7 @@ search does not fire.
 | `!theme amber` | Switch to amber-on-black. |
 | `!theme white` | Switch to white-on-black. |
 | `!theme` | Clear — revert to green. |
+| `!help` | Open this README on GitHub in a new tab. |
 | `!cloud …` | Encrypted remote snapshots — see below. |
 | `!local …` | Snapshots in a folder on disk — see below. |
 
