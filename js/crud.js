@@ -47,6 +47,72 @@ export function setupCrud(db, refreshFn) {
     return Object.keys(config).length > 0 ? { config, entries } : entries;
   }
 
+  async function importJsonData(raw, sourceLabel) {
+    const entries = Array.isArray(raw) ? raw : (raw.entries || []);
+    const jsonConfig = Array.isArray(raw) ? {} : (raw.config || {});
+
+    if (!Array.isArray(entries)) {
+      alert('JSON must be an array of entries or {config, entries} object.');
+      return false;
+    }
+
+    const searchInput = document.getElementById('search');
+    const savedSearch = searchInput.value;
+    const savedPlaceholder = searchInput.placeholder;
+    searchInput.disabled = true;
+    searchInput.value = '';
+
+    // The DELETE and the reload are one transaction: a failure part-way through
+    // must not leave the feed table emptied or half-populated. Every import route
+    // (!local pull, !cloud pull, the legacy file-open) lands here.
+    const total = entries.length;
+    await db.exec('BEGIN;');
+    try {
+      await db.exec('DELETE FROM feed;');
+      for (let i = 0; i < entries.length; i++) {
+        const row = entries[i];
+        await db.query(
+          'INSERT INTO feed (feed_date, feed_content) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
+          [row.feed_date, row.feed_content]
+        );
+        if (i % 25 === 0 || i === entries.length - 1) {
+          searchInput.placeholder = `Loading ${i + 1} / ${total}...`;
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+
+      for (const [key, value] of Object.entries(jsonConfig)) {
+        await db.query(
+          "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2;",
+          [key, value]
+        );
+      }
+
+      await db.exec('COMMIT;');
+    } catch (err) {
+      await db.exec('ROLLBACK;');
+      searchInput.disabled = false;
+      searchInput.value = savedSearch;
+      searchInput.placeholder = savedPlaceholder;
+      alert('Import failed: ' + err.message);
+      return false;
+    }
+
+    searchInput.disabled = false;
+    searchInput.value = savedSearch;
+    searchInput.placeholder = savedPlaceholder;
+
+    if (jsonConfig.site_title !== undefined) {
+      const titleEl = document.getElementById('home-link');
+      titleEl.textContent = `[${jsonConfig.site_title || 'feed'}]`;
+    }
+    if (jsonConfig.theme) {
+      document.documentElement.setAttribute('data-theme', jsonConfig.theme);
+    }
+    alert(`Loaded ${total} entries from ${sourceLabel}.`);
+    return true;
+  }
+
   // --- Create form ---
   function showCreateForm() {
     createForm.classList.add('open');
