@@ -123,8 +123,8 @@ async function handleCommand(input) {
   const parts = raw.substring(1).split(/\s+/);
   const cmd = parts[0]?.toLowerCase();
 
-  // Both transports live in cloud.js behind one command() surface — see
-  // ROADMAP.md "!local — one sync surface, two transports".
+  // Both transports live in cloud.js behind one command() surface: !cloud (remote,
+  // encrypted) and !local (a folder on disk). Exactly one is connected at a time.
   if (cmd === 'cloud' || cmd === 'local') {
     const handled = await cloud.command(cmd, parts.slice(1));
     if (handled) document.getElementById('search').value = '';

@@ -52,7 +52,7 @@ for (const appDir of APPS) {
 
   test(`${name}: the deleted persistence UI stays deleted`, () => {
     // Phases 3 and 4. Reintroducing any of these means reintroducing always-on file
-    // sync or a second export path — both deliberately removed. See ROADMAP.
+    // sync or a second export path — both deliberately removed 2026-08-22.
     for (const gone of ['attach-file', 'create-file', 'attach-name',
                         'save-json', 'open-json', 'json-input',
                         'export-csv', 'import-csv', 'csv-input']) {

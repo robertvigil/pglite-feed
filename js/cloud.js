@@ -324,11 +324,12 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   })();
   // The indicator is one line under the search bar, shared by both transports.
   // Only the glyph and the wording change with the mode — position, colors and
-  // click-to-push are identical, per ROADMAP "Indicator".
+  // click-to-push are identical.
   //
   // A tooltip that says only «In sync with "main"» is ambiguous once there are two
-  // backends, so every message names its transport. See ROADMAP "Found while
-  // testing phase 1".
+  // backends, so every message names its transport. (This bit once: the tooltip
+  // reported a 9:01am cloud push while a local push had just completed at 3:20pm,
+  // with nothing to say the two numbers described different things.)
   function setInd(state, title, name) {
     if (!ind) return;
     const mode = activeMode();
@@ -612,8 +613,9 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
 
   // ==========================================================================
   // !local — the second transport. Same verbs as !cloud, a directory on disk
-  // instead of a jsonbin collection. See ROADMAP.md "!local — one sync surface,
-  // two transports" for the reasoning behind each choice here.
+  // instead of a jsonbin collection. Same verbs, same envelope/hashing helpers, same
+  // indicator — the transport is the only thing that differs. See CLAUDE.md for why
+  // local snapshots are written unencrypted.
   //
   // PHASE 2: mutual exclusion is enforced at the activation points (see claimMode),
   // and the indicator now follows the active mode — 💾 for local, ☁ for cloud, with
@@ -638,7 +640,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   const saveLocalState = (s) => localStorage.setItem(LK.state, JSON.stringify(s));
 
   // --- one mode at a time ---------------------------------------------------
-  // ROADMAP "One mode at a time": a single sync.mode ('cloud' | 'local' | null)
+  // A single sync.mode ('cloud' | 'local' | null)
   // replaces two overlapping state machines. It is stored explicitly rather than
   // inferred on every read, so the indicator never has to guess which transport a
   // "synced" claim describes.
