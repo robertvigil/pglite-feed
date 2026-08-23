@@ -247,7 +247,7 @@ async function jbListBins(masterKey, collectionId) {
   return r.json(); // [{ record: <binId>, createdAt, snippetMeta, private }]
 }
 
-export function setupCloud({ appKind, buildExportData, importJsonData, refresh, syncToFile }) {
+export function setupCloud({ appKind, buildExportData, importJsonData, refresh }) {
   const NS = `${appKind}.cloud`;
   const K = { config: `${NS}.config`, bins: `${NS}.bins`, state: `${NS}.state`, device: `${NS}.device` };
   const SDB = `pglite-${appKind}-cloud`; // IndexedDB name for the secrets kv store
@@ -559,7 +559,6 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
       const ok = await importJsonData(data, `cloud:${name}`);
       if (ok) {
         await refresh();
-        if (syncToFile) await syncToFile();
         saveState({ name, hash: await sha256Hex(stable(data)), savedAt: found.env.savedAt });
       }
     } catch (e) {
@@ -757,9 +756,16 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
 
   async function doLocalAttach() {
     if (!hasFSDir()) {
+      // No folder to attach, but local mode still means something here: push
+      // downloads and pull opens a file picker. Record a config anyway so the mode
+      // machinery and the indicator have something to see — without this, local
+      // mode could never activate on Firefox/Safari.
+      if (!(await claimMode('local'))) return;
+      saveLocalCfg({ backend: 'download' });
+      updateDirty();
       alert(
         'This browser has no File System Access API, so there is no folder to attach.\n\n' +
-        '!local still works — it falls back to download / file-picker:\n' +
+        'Local mode is on and works through the browser instead:\n' +
         '  !local push   downloads the JSON\n' +
         '  !local pull   opens a file picker'
       );
@@ -783,12 +789,17 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh, 
   async function doLocalStatus() {
     const cfg = loadLocalCfg();
     const st = loadLocalState();
-    if (!cfg && !hasFSDir()) {
+    // No File System Access API here (Firefox / Safari / plain HTTP): there is no
+    // folder, but local mode is still a real mode — it just transports through the
+    // browser's download and file-picker instead.
+    if (cfg?.backend === 'download' || (!cfg && !hasFSDir())) {
       alert(
-        `Local — ${appKind}\n\n` +
-        `Mode:      download / file-picker (no File System Access API here)\n` +
+        `Local status — ${appKind}\n` +
+        `Mode:      ${activeMode() === 'local' ? 'ACTIVE' : cfg ? 'inactive — !cloud is the active transport' : 'not set up — run !local attach'}\n` +
+        overlapNote() + `\n` +
+        `Transport: download / file-picker (no File System Access API here)\n` +
         `Last sync: ${st ? `"${st.name}" ${fmt(st.savedAt)}` : 'never'}\n\n` +
-        `!local push · !local pull`
+        `!local push · !local pull · !local off`
       );
       return;
     }

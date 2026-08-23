@@ -143,7 +143,6 @@ async function handleCommand(input) {
     }
     await loadTitle();
     document.getElementById('search').value = '';
-    await syncToFile();
     return true;
   }
 
@@ -159,7 +158,6 @@ async function handleCommand(input) {
     }
     await loadTheme();
     document.getElementById('search').value = '';
-    await syncToFile();
     return true;
   }
 
@@ -259,10 +257,10 @@ async function refresh() {
 }
 
 // --- Setup CRUD (read-write controls, create form, edit/delete, JSON open/save, FSA attach) ---
-const { syncToFile, buildExportData, importJsonData } = setupCrud(db, refresh);
+const { buildExportData, importJsonData } = setupCrud(db, refresh);
 
 // --- Setup sync (!cloud remote snapshots, !local folder snapshots) ---
-const cloud = setupCloud({ appKind: 'feed', buildExportData, importJsonData, refresh, syncToFile });
+const cloud = setupCloud({ appKind: 'feed', buildExportData, importJsonData, refresh });
 
 
 // --- In-page "#section" anchors inside rendered entry content ---

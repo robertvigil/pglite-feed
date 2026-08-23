@@ -24,7 +24,7 @@ A static web app loaded in your browser. Entries live in the browser's IndexedDB
 - **Configurable title** — type `!title My Site` in the search bar to customize the `[feed]` header. Included in JSON exports.
 - **Theme support** — type `!theme amber`, `!theme white`, or `!theme green` in the search bar to switch the accent color. Persists across sessions and is included in JSON exports.
 - **Markdown-style links** — `[display text](url)` in content becomes a clickable link. Bare URLs are also auto-linked.
-- **Persistence** — on Chromium browsers (Chrome/Edge/Brave/Arc) over HTTPS or `localhost`, two icons attach the feed to a real JSON file on disk: `🔗` opens an existing file (safe — read-then-decide), `📝` creates a new file or overwrites a chosen one. After attach, every edit live-syncs. On Firefox/Safari, falls back to traditional `↓ Save` / `↑ Open` buttons. Capability-gated — the UI shows one flow or the other, never both.
+- **Persistence** — IndexedDB is the store; files are backups you ask for. `!local` writes named JSON snapshots into a folder you pick (or downloads them where the File System Access API is missing), and `!cloud` does the same encrypted to jsonbin. Exactly one transport is connected at a time.
 - **Auto-load on empty DB** — first visit loads `feed.json`, a single entry linking the in-app help and the repo. Delete it and the app is yours.
 - **Keyboard-friendly** — Esc cancels create/edit, Ctrl+Enter or Shift+Enter submits forms.
 - **Mobile responsive** — compact cards on small screens, tables on desktop.
@@ -153,24 +153,17 @@ Title and theme persist in the `config` table and are included in JSON exports.
 
 ## Persistence
 
-The app picks one of two flows based on browser capability — only one is shown at a time.
 
-### 🔗 / 📝 Attach (Chromium + HTTPS / localhost)
+### Snapshots, not auto-save
 
-Two icons replace the manual save/load flow:
+There is no always-on file sync. Until 2026-08-22 two icons (`🔗` / `📝`) attached the
+feed to a JSON file and rewrote it on every edit; both are gone. IndexedDB is the
+store and a file is a backup, so writing one on every keystroke was solving a problem
+that did not exist — and the `☁`/`💾` indicator already tells you when a backup is
+stale.
 
-- **🔗 Open** — pick an *existing* JSON file and attach. The app reads it as-is. If the file has entries, it asks whether to load them into the feed or keep the current feed (file is preserved until the first edit). Safe — never destructive.
-- **📝 Create** — pick a path (or filename to overwrite) and attach. The app immediately writes the current feed to disk. The OS shows its own "Replace?" warning if the file already exists; confirming it means you've opted into overwriting.
-
-After attaching, every edit (create / edit / delete) writes the current feed back to disk. No manual save.
-
-- The icon shows the attached filename, e.g. `🔗 feed.json`.
-- The handle persists across reloads. On a new browser session, the icon shows in amber with a `⚠` — click it once to re-grant write permission, then sync resumes silently.
-- Click the icon again while attached → confirm-detach.
-
-This uses the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API) — the picked file is on the *visitor's* machine, not the server's.
-
-> **Why two icons?** Linux's GTK Save dialog truncates the chosen file before the browser hands it back to JavaScript, which makes a unified "open or create" button unsafe. Splitting them into 🔗 (read-then-decide) and 📝 (intentional overwrite) keeps the destructive path opt-in.
+Use `!local` (folder on disk) or `!cloud` (encrypted, remote) instead. Both are
+explicit push/pull with named snapshots. See the sections below.
 
 ### ↓ Save / ↑ Open (Firefox / Safari / non-secure HTTP)
 
@@ -393,11 +386,11 @@ No frameworks, no build tools, no package manager. All dependencies loaded as ES
 
 Needs a modern browser with ES modules, IndexedDB, WebAssembly, and `:has()` CSS selector (2023+).
 
-The live-sync `🔗` flow additionally requires the [File System Access API](https://caniuse.com/native-filesystem-api) and a secure context (HTTPS or `localhost`):
+`!local` uses the [File System Access API](https://caniuse.com/native-filesystem-api) to write into a folder you pick, which needs a secure context (HTTPS or `localhost`):
 
 - ✅ **Chrome / Edge / Arc / Opera** — works out of the box.
-- ⚠️ **Brave** — disabled by default. Enable via `brave://flags/#file-system-access-api` → set to **Enabled** → relaunch.
-- ❌ **Firefox / Safari** — not available; falls back to `↓ ↑` (same data, manual save/load).
+- ⚠️ **Brave** — may need `brave://flags/#file-system-access-api` set to **Enabled**, then relaunch.
+- ❌ **Firefox / Safari** — no folder. `!local` still works: `push` downloads the snapshot and `pull` opens a file picker. Same commands, same data.
 
 To verify in DevTools: `'showSaveFilePicker' in window && window.isSecureContext` should return `true`.
 

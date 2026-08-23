@@ -13,8 +13,7 @@ async function boot(opts = {}) {
     buildExportData: async () => ENTRIES,
     importJsonData: async () => true,
     refresh: async () => {},
-    syncToFile: async () => {},
-  });
+  }); // note: no syncToFile — phase 3 removed the always-on file attach
   return { ...env, api };
 }
 
@@ -142,4 +141,46 @@ test('push writes the file, list sees it, delete removes it', async () => {
 
   await api.command('local', ['delete', 'feed']);
   assert.equal(dir._files.has('feed.json'), false, 'delete removed it');
+});
+
+// --- phase 3: no File System Access API (Firefox / Safari / plain HTTP) ---
+
+test('no-FSA: attach still activates local mode, so the indicator can work', async () => {
+  // Phase-2 gap: the download fallback never recorded a config, so localOn() was
+  // false, local mode could never activate, and the indicator stayed hidden even
+  // after a successful push.
+  const { api, calls, indicator } = await boot({ hasFSA: false });
+  await api.command('local', ['attach']);
+  assert.equal(JSON.parse(localStorage.getItem('feed.local.config')).backend, 'download');
+  assert.equal(mode(), 'local');
+  assert.match(calls.alerts.at(-1), /download|file picker/i);
+  await settle();
+  assert.match(indicator().textContent, /^💾/);
+});
+
+test('no-FSA: the download backend never reports a permission problem', async () => {
+  // The amber state is meaningful only for a real folder handle. A download-mode
+  // install has nothing to grant, so it must fall through to dirty/synced.
+  const { api, indicator } = await boot({ hasFSA: false });
+  await api.command('local', ['attach']);
+  api.updateDirty(); await settle();
+  assert.doesNotMatch(indicator().textContent, /⚠/);
+  assert.match(indicator().textContent, /unsaved/);
+});
+
+test('no-FSA: status reports the transport instead of a folder', async () => {
+  const { api, calls } = await boot({ hasFSA: false });
+  await api.command('local', ['attach']);
+  await api.command('local', []);
+  assert.match(calls.alerts.at(-1), /download \/ file-picker/);
+  assert.match(calls.alerts.at(-1), /ACTIVE/);
+});
+
+test('no-FSA: switching from cloud still requires a confirm', async () => {
+  const { api, calls } = await boot({ hasFSA: false, confirmAnswers: [false] });
+  cloudCfg();
+  await api.command('local', ['attach']);
+  assert.match(calls.confirms[0], /one transport at a time/i);
+  assert.ok(localStorage.getItem('feed.cloud.config'), 'declined: cloud survives');
+  assert.equal(localStorage.getItem('feed.local.config'), null);
 });
