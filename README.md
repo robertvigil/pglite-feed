@@ -185,12 +185,42 @@ can move data between devices without a synced folder.
 
 **One-time setup**
 
-1. Create a **private** repo to hold snapshots — e.g. `pglite-snapshots`. It can be
-   empty; the app creates directories as it pushes.
-2. Create a [fine-grained personal access token](https://github.com/settings/tokens?type=beta)
-   scoped to **that repo only**, with **Contents: read and write**. Set an expiry.
-3. In the search bar, run `!cloud github <owner>/<repo>`. You'll be prompted (masked)
-   for the token, which is stored in this device's IndexedDB. `!cloud off` forgets it.
+**1. Create a private repo** to hold snapshots — e.g. `pglite-snapshots`. It can be
+completely empty; the app creates directories as it pushes.
+
+**2. Create a token.** This is *not* your GitHub login — being signed in to
+github.com does nothing for the app, because the REST API doesn't accept cookies and
+the app runs on a different origin. You need an API credential you paste in once:
+
+1. GitHub → your avatar → **Settings** → **Developer settings** →
+   **Personal access tokens** → **Fine-grained tokens** → **Generate new token**
+   (direct link: <https://github.com/settings/personal-access-tokens/new>)
+2. **Token name** — something you'll recognize later, e.g. `pglite-snapshots`
+3. **Expiration** — pick one (see the note below about what happens when it lapses)
+4. **Resource owner** — your own account
+5. **Repository access** → **Only select repositories** → choose your snapshots repo
+6. **Permissions** → **Repository permissions** → **Contents** → **Read and write**
+   (*Metadata: Read-only* is added automatically and can't be removed — that's fine)
+7. **Generate token**, then **copy it immediately** — GitHub shows it only once. It
+   starts with `github_pat_`
+
+`Contents: read and write` is the only permission needed. It covers reading, writing
+and deleting snapshot files, and the commit lookup that `!cloud list` uses for
+timestamps.
+
+> A **classic** PAT with `repo` scope also works, if you already have one. It's much
+> broader than necessary — it reaches every repo on your account — which is why the
+> fine-grained token above is the better choice.
+
+**3. Connect the app.** In the search bar, run `!cloud github <owner>/<repo>`. You'll
+be prompted (masked) for the token. It's stored in this device's IndexedDB, so you're
+only asked once per device — paste the same token on each device, or create one per
+device so you can revoke them independently. `!cloud off` forgets it.
+
+> **When the token expires**, pushes start failing with
+> `Push failed: GitHub 401: Bad credentials`. Nothing is lost — your data lives in the
+> browser. Generate a new token, then `!cloud off` followed by
+> `!cloud github <owner>/<repo>` to store it.
 
 Snapshots are written to `feed/<name>.json`, so **one repo can serve both apps** —
 `feed/` and `activities/` sit side by side and never collide.
