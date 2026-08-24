@@ -133,3 +133,70 @@ export function fakeDir(name, files = new Map()) {
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // _updateDirty is debounced 300ms; give it room to settle.
 export const settle = () => sleep(400);
+
+// --- fake GitHub Contents API ---
+//
+// Backs a repo with an in-memory { path: content } map and implements only the
+// endpoints cloud.js calls. Records every request so a test can assert on what the
+// app actually sent (method, path, commit message, whether a SHA was included).
+export function installGitHub({ files = {}, token = 'ghp_test' } = {}) {
+  const repo = new Map(Object.entries(files));
+  const calls = [];
+  const shaOf = (text) => 'sha' + [...text].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(16);
+  const json = (body, status = 200) => new Response(JSON.stringify(body), {
+    status, headers: { 'Content-Type': 'application/json' },
+  });
+  const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
+  const unb64 = (s) => Buffer.from(s, 'base64').toString('utf8');
+
+  globalThis.btoa = (s) => Buffer.from(s, 'binary').toString('base64');
+  globalThis.atob = (s) => Buffer.from(s, 'base64').toString('binary');
+
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = new URL(url);
+    const auth = (opts.headers || {})['Authorization'];
+    calls.push({ method: opts.method || 'GET', url: u.pathname + u.search, auth,
+                 body: opts.body ? JSON.parse(opts.body) : null });
+    if (auth !== `Bearer ${token}`) return json({ message: 'Bad credentials' }, 401);
+
+    let m = u.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/contents\/(.*)$/);
+    if (m) {
+      const path = decodeURIComponent(m[2]);
+      const method = opts.method || 'GET';
+      if (method === 'GET') {
+        // directory listing when nothing is stored at that exact path
+        if (!repo.has(path)) {
+          const kids = [...repo.keys()].filter((k) => k.startsWith(path + '/'));
+          if (!kids.length) return json({ message: 'Not Found' }, 404);
+          return json(kids.map((k) => ({
+            type: 'file', name: k.split('/').pop(), path: k,
+            size: repo.get(k).length, sha: shaOf(repo.get(k)),
+          })));
+        }
+        const text = repo.get(path);
+        return json({ type: 'file', path, sha: shaOf(text), content: b64(text) });
+      }
+      if (method === 'PUT') {
+        const body = JSON.parse(opts.body);
+        const cur = repo.get(path);
+        if (cur && body.sha !== shaOf(cur)) return json({ message: 'sha does not match' }, 409);
+        if (!cur && body.sha) return json({ message: 'sha given for a new file' }, 422);
+        const text = unb64(body.content);
+        repo.set(path, text);
+        return json({ content: { path, sha: shaOf(text) } });
+      }
+      if (method === 'DELETE') {
+        const body = JSON.parse(opts.body);
+        if (!repo.has(path)) return json({ message: 'Not Found' }, 404);
+        if (body.sha !== shaOf(repo.get(path))) return json({ message: 'sha does not match' }, 409);
+        repo.delete(path);
+        return json({ commit: {} });
+      }
+    }
+    m = u.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/commits$/);
+    if (m) return json([{ commit: { committer: { date: '2026-08-23T12:00:00Z' } } }]);
+
+    return json({ message: 'no fake route for ' + u.pathname }, 404);
+  };
+  return { repo, calls };
+}

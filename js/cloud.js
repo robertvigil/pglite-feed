@@ -1,51 +1,45 @@
-// cloud.js — encrypted remote snapshots ("cloud") for the pglite apps.
+// cloud.js — remote and local snapshots for the pglite apps.
 //
-// This file is BYTE-IDENTICAL across pglite-activities and pglite-feed (like the
-// leafwiki custom.css). All the app-specific bits are injected via setupCloud():
-// the app hands in its own buildExportData / importJsonData and an appKind, so the
-// crypto + transport here stay app-agnostic.
+// This file is BYTE-IDENTICAL across pglite-activities and pglite-feed. All the
+// app-specific bits are injected via setupCloud(): the app hands in its own
+// buildExportData / importJsonData and an appKind, so everything here is
+// app-agnostic.
 //
-// Model: the remote holds a namespace of NAMED snapshots (default "main"). Each
-// snapshot is a jsonbin "bin" inside one Collection. What we store per bin is an
-// ENVELOPE — cleartext metadata {v,app,name,savedAt,device} wrapping an AES-GCM
-// ciphertext of the app's normal JSON export. The cleartext `app` field lets us
-// reject a feed backup loaded into activities BEFORE asking for a passphrase.
+// Model: a namespace of NAMED snapshots (default "main"), reachable through two
+// transports that are mutually exclusive — exactly one is connected at a time.
 //
-// Crypto: WebCrypto PBKDF2(250k, SHA-256) -> AES-GCM-256. No dependencies; runs
-// only in a secure context (https / localhost), same requirement as the FSA code.
+//   !cloud  → plain JSON files in a private GitHub repo, at <app>/<name>.json
+//   !local  → plain JSON files in a folder on disk, at <name>.json
 //
-// Secrets (encryption passphrase + jsonbin master key) are persisted per-device in
-// IndexedDB — set once, not re-prompted every session (the user's call: reaching
-// IndexedDB already requires the unlocked device + origin). `!cloud off` forgets
-// them.
+// Both write the same shape: {app, name, savedAt, device, config, entries}. The
+// leading metadata is what `!cloud list` reports and what the overwrite guard
+// compares; importJsonData ignores the extra keys, so a snapshot from either
+// transport loads into either one, and files written before this format still work.
+//
+// NO ENCRYPTION, deliberately. Privacy comes from the repo being private (the
+// GitHub API requires auth to read it) — not from ciphertext. Encrypting would also
+// destroy the main reason to be on git at all: a diff between two revisions of an
+// opaque blob tells you nothing, while a diff of plain JSON tells you exactly what
+// changed. Snapshots written by the older AES-GCM format are detected and reported,
+// not silently mangled.
+//
+// The token is a fine-grained PAT scoped to the one snapshots repo (Contents:
+// read/write). It is persisted per-device in IndexedDB — set once, not re-prompted
+// each session (reaching IndexedDB already requires the unlocked device + origin).
+// `!cloud off` forgets it.
 //
 // Commands (wired from each app's handleCommand):
 //   !cloud                      status
-//   !cloud jsonbin <collId>     configure backend (prompts, masked, for master key)
-//   !cloud list                 list this app's remote snapshots (no passphrase needed)
+//   !cloud github <owner/repo>  configure backend (prompts, masked, for the token)
+//   !cloud list                 list this app's remote snapshots
 //   !cloud delete <name>        permanently delete a remote snapshot
 //   !cloud device <label>       set this device's label ("laptop", "phone")
-//   !cloud off                  disconnect + forget secrets on this device
-//   !cloud push [name]          encrypt + upload snapshot (default "main")
-//   !cloud pull [name]          download + decrypt + load snapshot (default "main")
+//   !cloud off                  disconnect + forget the token on this device
+//   !cloud push [name]          upload snapshot (default "main")
+//   !cloud pull [name]          download + load snapshot (default "main")
 
-const API = 'https://api.jsonbin.io/v3';
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-
-// --- base64 that survives large buffers (spread would overflow the call stack) ---
-function toB64(buf) {
-  const bytes = new Uint8Array(buf);
-  let s = '';
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(s);
-}
-function fromB64(s) {
-  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-}
 
 // --- stable JSON (sorted object keys) so the dirty-hash doesn't flip on key order ---
 function stable(o) {
@@ -58,55 +52,6 @@ function stable(o) {
 async function sha256Hex(str) {
   const h = await crypto.subtle.digest('SHA-256', enc.encode(str));
   return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-// --- crypto envelope ---
-async function deriveKey(passphrase, salt, iter) {
-  const base = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' },
-    base,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
-}
-// --- gzip the PLAINTEXT before encrypting (ciphertext is incompressible, so the
-//     order matters). Markdown/JSON compresses ~3-5x, which is what keeps the
-//     base64 envelope under jsonbin's per-bin size limit. jsonbin never sees any
-//     of this — gzip lives inside the encrypted `ct` string. ---
-const canGzip = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
-async function gzip(u8) {
-  const stream = new Blob([u8]).stream().pipeThrough(new CompressionStream('gzip'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-async function gunzip(u8) {
-  const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-
-async function encryptEnvelope(obj, passphrase, meta) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const iter = 250000;
-  const key = await deriveKey(passphrase, salt, iter);
-  let bytes = enc.encode(JSON.stringify(obj));
-  let zip = 'none';
-  if (canGzip) { bytes = await gzip(bytes); zip = 'gzip'; }
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes);
-  return {
-    v: 1, app: meta.app, name: meta.name, cipher: 'AES-GCM', zip,
-    kdf: { name: 'PBKDF2', hash: 'SHA-256', iter, salt: toB64(salt) },
-    iv: toB64(iv), ct: toB64(ct),
-    savedAt: meta.savedAt, device: meta.device,
-  };
-}
-async function decryptEnvelope(env, passphrase) {
-  const key = await deriveKey(passphrase, fromB64(env.kdf.salt), env.kdf.iter);
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(env.iv) }, key, fromB64(env.ct));
-  let bytes = new Uint8Array(pt);
-  if (env.zip === 'gzip') bytes = await gunzip(bytes); // undefined/'none' = uncompressed (back-compat)
-  return JSON.parse(dec.decode(bytes));
 }
 
 // --- tiny IndexedDB key/value store for the two device-persisted secrets ---
@@ -207,44 +152,94 @@ function maskedPrompt(title, message, { value = '' } = {}) {
   });
 }
 
-// --- jsonbin.io v3 transport ---
-async function jbErr(r) {
-  try { const j = await r.json(); return `jsonbin ${r.status}: ${j.message || JSON.stringify(j)}`; }
-  catch { return `jsonbin ${r.status}`; }
+// --- GitHub Contents API transport ---
+//
+// Snapshots are plain JSON files in a private repo: <app>/<name>.json. That makes a
+// directory the container (the same shape !local uses on disk), gives real version
+// history with readable diffs, and lets the token be a fine-grained PAT scoped to
+// this one repo. Content is base64 in the API payload only — at rest it is plain
+// text, which is the whole point: `git diff` has to mean something.
+//
+// Updating or deleting a file needs its blob SHA, so pushes cache name -> sha.
+const API = 'https://api.github.com';
+
+async function ghErr(r) {
+  try { const j = await r.json(); return `GitHub ${r.status}: ${j.message || JSON.stringify(j)}`; }
+  catch { return `GitHub ${r.status}`; }
 }
-function jbHeaders(masterKey, extra = {}) {
-  return { 'Content-Type': 'application/json', 'X-Master-Key': masterKey, ...extra };
+function ghHeaders(token) {
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'Content-Type': 'application/json',
+  };
 }
-async function jbCreate(masterKey, collectionId, name, body) {
-  const r = await fetch(`${API}/b`, {
-    method: 'POST',
-    headers: jbHeaders(masterKey, { 'X-Collection-Id': collectionId, 'X-Bin-Name': name, 'X-Bin-Private': 'true' }),
-    body: JSON.stringify(body),
+// base64 for UTF-8 payloads, chunked so a large snapshot cannot overflow the stack
+function b64encode(str) {
+  const bytes = enc.encode(str);
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) out += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(out);
+}
+function b64decode(b64) {
+  const bin = atob(b64.replace(/\n/g, ''));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return dec.decode(bytes);
+}
+
+// Read one snapshot. Returns { obj, sha } or null when the file does not exist.
+async function ghRead(token, repo, path) {
+  const r = await fetch(`${API}/repos/${repo}/contents/${path}`, { headers: ghHeaders(token) });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(await ghErr(r));
+  const j = await r.json();
+  // Files over ~1MB come back with content omitted and truncated set.
+  if (!j.content && j.download_url) {
+    const raw = await fetch(j.download_url);
+    if (!raw.ok) throw new Error(`GitHub ${raw.status} fetching ${path}`);
+    return { obj: JSON.parse(await raw.text()), sha: j.sha };
+  }
+  return { obj: JSON.parse(b64decode(j.content)), sha: j.sha };
+}
+
+// Create or update. `sha` must be the current blob SHA when replacing, absent when new.
+async function ghWrite(token, repo, path, obj, sha, message) {
+  const body = { message, content: b64encode(JSON.stringify(obj, null, 2)) };
+  if (sha) body.sha = sha;
+  const r = await fetch(`${API}/repos/${repo}/contents/${path}`, {
+    method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(await jbErr(r));
-  return (await r.json()).metadata.id;
+  if (!r.ok) throw new Error(await ghErr(r));
+  return (await r.json()).content.sha;
 }
-async function jbUpdate(masterKey, binId, body) {
-  const r = await fetch(`${API}/b/${binId}`, {
-    method: 'PUT',
-    headers: jbHeaders(masterKey, { 'X-Bin-Versioning': 'false' }),
-    body: JSON.stringify(body),
+
+async function ghDelete(token, repo, path, sha, message) {
+  const r = await fetch(`${API}/repos/${repo}/contents/${path}`, {
+    method: 'DELETE', headers: ghHeaders(token), body: JSON.stringify({ message, sha }),
   });
-  if (!r.ok) throw new Error(await jbErr(r));
+  if (!r.ok) throw new Error(await ghErr(r));
 }
-async function jbRead(masterKey, binId) {
-  const r = await fetch(`${API}/b/${binId}/latest`, { headers: jbHeaders(masterKey) });
-  if (!r.ok) throw new Error(await jbErr(r));
-  return (await r.json()).record;
+
+// One request for the whole collection — no per-file reads, unlike the old backend.
+// Returns [] for a directory that does not exist yet.
+async function ghList(token, repo, dir) {
+  const r = await fetch(`${API}/repos/${repo}/contents/${dir}`, { headers: ghHeaders(token) });
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error(await ghErr(r));
+  const j = await r.json();
+  if (!Array.isArray(j)) throw new Error(`${dir} is not a directory in ${repo}`);
+  return j.filter((e) => e.type === 'file' && /\.json$/i.test(e.name));
 }
-async function jbDelete(masterKey, binId) {
-  const r = await fetch(`${API}/b/${binId}`, { method: 'DELETE', headers: jbHeaders(masterKey) });
-  if (!r.ok) throw new Error(await jbErr(r));
-}
-async function jbListBins(masterKey, collectionId) {
-  const r = await fetch(`${API}/c/${collectionId}/bins`, { headers: jbHeaders(masterKey) });
-  if (!r.ok) throw new Error(await jbErr(r));
-  return r.json(); // [{ record: <binId>, createdAt, snippetMeta, private }]
+
+// Commit timestamp for one path — only fetched for `!cloud list`, one call per file.
+async function ghLastCommit(token, repo, path) {
+  const r = await fetch(`${API}/repos/${repo}/commits?path=${encodeURIComponent(path)}&per_page=1`,
+    { headers: ghHeaders(token) });
+  if (!r.ok) return null;
+  const j = await r.json();
+  return j[0]?.commit?.committer?.date || null;
 }
 
 export function setupCloud({ appKind, buildExportData, importJsonData, refresh }) {
@@ -255,10 +250,13 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   const MODE_KEY = `${appKind}.sync.mode`; // 'cloud' | 'local' | absent — see "One mode at a time"
 
   // --- non-secret persistence (localStorage) ---
-  const loadConfig = () => { try { const c = JSON.parse(localStorage.getItem(K.config) || 'null'); return (c && c.collectionId) ? c : null; } catch { return null; } };
+  const loadConfig = () => { try { const c = JSON.parse(localStorage.getItem(K.config) || 'null'); return (c && c.repo) ? c : null; } catch { return null; } };
   const saveConfig = (c) => localStorage.setItem(K.config, JSON.stringify(c));
-  const loadBins = () => { try { return JSON.parse(localStorage.getItem(K.bins) || '{}'); } catch { return {}; } };
-  const saveBins = (m) => localStorage.setItem(K.bins, JSON.stringify(m));
+  // name -> blob SHA. A PUT that replaces an existing file must send its current
+  // SHA, so cache what we last saw and re-read on a miss.
+  const loadShas = () => { try { return JSON.parse(localStorage.getItem(K.bins) || '{}'); } catch { return {}; } };
+  const saveShas = (m) => localStorage.setItem(K.bins, JSON.stringify(m));
+  const pathFor = (name) => `${appKind}/${name}.json`;
   const loadState = () => { try { return JSON.parse(localStorage.getItem(K.state) || 'null'); } catch { return null; } };
   const saveState = (s) => localStorage.setItem(K.state, JSON.stringify(s));
 
@@ -275,28 +273,20 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
     catch { return iso; }
   };
 
-  const secureOk = () => {
-    if (window.isSecureContext && window.crypto && crypto.subtle) return true;
-    alert('Cloud needs a secure context (https or localhost) for encryption. This page is not secure.');
-    return false;
-  };
 
-  // --- secrets (IndexedDB, per device) ---
-  async function ensureMasterKey() {
-    let k = await idbGet(SDB, 'masterKey');
-    if (k) return k;
-    k = await maskedPrompt('jsonbin.io Master Key', 'Paste your X-Master-Key. Stored on this device only.');
-    if (!k) return null;
-    await idbSet(SDB, 'masterKey', k);
-    return k;
-  }
-  async function ensurePassphrase() {
-    let p = await idbGet(SDB, 'passphrase');
-    if (p) return p;
-    p = await maskedPrompt('Encryption passphrase', 'Encrypts/decrypts your cloud snapshots. Stored on this device only — jsonbin never sees it. Use the SAME passphrase on every device.');
-    if (!p) return null;
-    await idbSet(SDB, 'passphrase', p);
-    return p;
+  // --- the one secret this app stores, per device (IndexedDB) ---
+  // A fine-grained PAT scoped to the snapshots repo. Set once, not re-prompted each
+  // session: reaching IndexedDB already requires the unlocked device and this origin.
+  async function ensureToken() {
+    let t = await idbGet(SDB, 'token');
+    if (t) return t;
+    t = await maskedPrompt(
+      'GitHub token',
+      'Fine-grained personal access token with Contents: read and write on the snapshots repo. Stored on this device only.'
+    );
+    if (!t) return null;
+    await idbSet(SDB, 'token', t);
+    return t;
   }
 
   // --- dirty indicator, mounted under the search bar ---
@@ -396,60 +386,42 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
     else setInd('dirty', null, st?.name || DEFAULT);
   }
 
-  // --- resolve a snapshot name -> { binId, env } for THIS app, warming the cache ---
-  async function resolveBin(masterKey, collectionId, name) {
-    const cache = loadBins();
-    if (cache[name]) {
-      try {
-        const env = await jbRead(masterKey, cache[name]);
-        if (env && env.app === appKind && env.name === name) return { binId: cache[name], env };
-      } catch { /* stale cache entry — fall through to a full scan */ }
-    }
-    const bins = await jbListBins(masterKey, collectionId);
-    const map = loadBins();
-    let found = null;
-    for (const b of bins) {
-      const binId = b.record;
-      let env;
-      try { env = await jbRead(masterKey, binId); } catch { continue; }
-      if (env && env.app === appKind && env.name) {
-        map[env.name] = binId;
-        if (env.name === name) found = { binId, env };
-      }
-    }
-    saveBins(map);
-    return found;
+  // A snapshot's identity is its path, so there is nothing to resolve — one read
+  // either finds the file or does not. (The old backend had no way to look up a
+  // snapshot by name, which forced reading every bin in the collection.)
+  async function readSnapshot(token, repo, name) {
+    const got = await ghRead(token, repo, pathFor(name));
+    if (!got) return null;
+    const shas = loadShas(); shas[name] = got.sha; saveShas(shas);
+    return got;
   }
 
-  async function listSnapshots(masterKey, collectionId) {
-    const bins = await jbListBins(masterKey, collectionId);
-    const map = loadBins();
-    const out = [];
-    for (const b of bins) {
-      const binId = b.record;
-      let env;
-      try { env = await jbRead(masterKey, binId); } catch { continue; }
-      if (env && env.app === appKind && env.name) {
-        map[env.name] = binId;
-        out.push({ name: env.name, savedAt: env.savedAt, device: env.device, binId });
-      }
-    }
-    saveBins(map);
-    out.sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
-    return out;
+  // Everything written carries its own provenance, so a snapshot is self-describing
+  // wherever it lands — a repo, a folder, or a downloaded file.
+  async function wrap(name) {
+    const data = await buildExportData();
+    const body = Array.isArray(data) ? { entries: data } : data;
+    return { app: appKind, name, savedAt: new Date().toISOString(), device, ...body };
   }
 
   // --- commands ---
-  async function doConfigure(collectionId) {
-    if (!collectionId) {
-      alert('Usage: !cloud jsonbin <collectionId>\n\nIn your jsonbin.io dashboard create a Collection and paste its ID here.');
+  async function doConfigure(repo) {
+    if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+      alert(
+        'Usage: !cloud github <owner>/<repo>\n\n' +
+        'Create a PRIVATE repo to hold snapshots, then paste owner/name here.\n' +
+        'You will be prompted for a fine-grained personal access token with\n' +
+        'Contents: read and write, scoped to that one repo.\n\n' +
+        `Snapshots are written to ${appKind}/<name>.json inside it, so one repo can\n` +
+        'serve both apps.'
+      );
       return;
     }
     if (!(await claimMode('cloud'))) return;
-    saveConfig({ backend: 'jsonbin', collectionId });
-    const k = await ensureMasterKey();
-    if (!k) alert(`Saved collection ${collectionId}. Master key not entered yet — you'll be prompted on your first !cloud push.`);
-    else alert(`Cloud configured — jsonbin collection ${collectionId}.\n\nNext:  !cloud push   uploads the "${DEFAULT}" snapshot.`);
+    saveConfig({ backend: 'github', repo });
+    const t = await ensureToken();
+    if (!t) alert(`Saved ${repo}. No token yet — you'll be prompted on your first !cloud push.`);
+    else alert(`Cloud configured — ${repo}.\n\nNext:  !cloud push   writes ${pathFor(DEFAULT)}.`);
     updateDirty();
   }
 
@@ -463,11 +435,10 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   async function doStatus() {
     const cfg = loadConfig();
     if (!cfg) {
-      alert('Cloud: not configured.\n\nSet up:\n  !cloud jsonbin <collectionId>\nThen:\n  !cloud push  /  !cloud pull  /  !cloud list');
+      alert('Cloud: not configured.\n\nSet up:\n  !cloud github <owner>/<repo>\nThen:\n  !cloud push  /  !cloud pull  /  !cloud list');
       return;
     }
-    const hasKey = !!(await idbGet(SDB, 'masterKey'));
-    const hasPass = !!(await idbGet(SDB, 'passphrase'));
+    const hasToken = !!(await idbGet(SDB, 'token'));
     const st = loadState();
     let dirty = '—';
     try { const h = await sha256Hex(stable(await buildExportData())); dirty = (st && st.hash === h) ? 'in sync' : 'unsaved changes'; } catch { /* ignore */ }
@@ -475,11 +446,11 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
       `Cloud status — ${appKind}\n` +
       `Mode:         ${activeMode() === 'cloud' ? 'ACTIVE' : 'inactive — !local is the active transport'}\n` +
       overlapNote() + `\n` +
-      `Backend:      jsonbin.io\n` +
-      `Collection:   ${cfg.collectionId}\n` +
+      `Backend:      GitHub — ${cfg.repo}\n` +
+      `Path:         ${pathFor('<name>')}\n` +
       `Device:       ${device}\n` +
-      `Master key:   ${hasKey ? 'stored' : 'not stored'}\n` +
-      `Passphrase:   ${hasPass ? 'stored' : 'not stored'}\n` +
+      `Token:        ${hasToken ? 'stored' : 'not stored'}\n` +
+      `Encryption:   off — snapshots are plain JSON; the repo is the privacy boundary\n` +
       `Last sync:    ${st ? `"${st.name}" ${fmt(st.savedAt)}` : 'never'}\n` +
       `State:        ${dirty}\n\n` +
       `!cloud push · !cloud pull · !cloud list · !cloud delete <name> · !cloud device <label> · !cloud off`
@@ -488,52 +459,64 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
 
   async function doList() {
     const cfg = loadConfig();
-    if (!cfg) { alert('Cloud not configured. Run: !cloud jsonbin <collectionId>'); return; }
-    if (!secureOk()) return;
-    const masterKey = await ensureMasterKey();
-    if (!masterKey) return;
+    if (!cfg) { alert('Cloud not configured. Run: !cloud github <owner>/<repo>'); return; }
+    const token = await ensureToken();
+    if (!token) return;
     busy = true; setInd('busy');
     try {
-      const arr = await listSnapshots(masterKey, cfg.collectionId);
-      if (!arr.length) alert(`No ${appKind} snapshots in this collection yet.\n\nCreate one with:  !cloud push`);
-      else alert(
-        `${appKind} snapshots (${arr.length}):\n\n` +
-        arr.map((s) => `• ${s.name} — ${fmt(s.savedAt)} (${s.device})`).join('\n') +
+      const files = await ghList(token, cfg.repo, appKind);
+      if (!files.length) {
+        alert(`No ${appKind} snapshots in ${cfg.repo} yet.\n\nCreate one with:  !cloud push`);
+        return;
+      }
+      // The listing gives name and size for free; the commit date costs one call per
+      // file, which is fine for a handful of snapshots and is what makes the list
+      // readable ("when, and from where").
+      const rows = await Promise.all(files.map(async (f) => {
+        const name = f.name.replace(/\.json$/i, '');
+        return { name, size: f.size, savedAt: await ghLastCommit(token, cfg.repo, f.path) };
+      }));
+      rows.sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+      const shas = loadShas();
+      for (const f of files) shas[f.name.replace(/\.json$/i, '')] = f.sha;
+      saveShas(shas);
+      alert(
+        `${appKind} snapshots in ${cfg.repo} (${rows.length}):\n\n` +
+        rows.map((r) => `• ${r.name} — ${fmt(r.savedAt)}${r.size != null ? ` (${Math.round(r.size / 1024)} KB)` : ''}`).join('\n') +
         `\n\nPull:  !cloud pull <name>    ·    Delete:  !cloud delete <name>`
       );
-    } catch (e) { alert('List failed: ' + e.message); }
+    } catch (e) { alert('List failed: ' + e.message + describeNetworkError(e)); }
     finally { busy = false; updateDirty(); }
   }
 
   async function doPush(name) {
     const cfg = loadConfig();
-    if (!cfg) { alert('Cloud not configured. Run: !cloud jsonbin <collectionId>'); return; }
-    if (!secureOk()) return;
-    const masterKey = await ensureMasterKey();
-    if (!masterKey) return;
-    const passphrase = await ensurePassphrase();
-    if (!passphrase) return;
+    if (!cfg) { alert('Cloud not configured. Run: !cloud github <owner>/<repo>'); return; }
+    const token = await ensureToken();
+    if (!token) return;
     busy = true; setInd('busy');
     try {
-      const data = await buildExportData();
-      const count = Array.isArray(data) ? data.length : (data.entries ? data.entries.length : 0);
-      const existing = await resolveBin(masterKey, cfg.collectionId, name);
-      if (existing && existing.env) {
+      const body = await wrap(name);
+      const count = body.entries ? body.entries.length : 0;
+
+      // Read first: we need the SHA to replace a file, and the read doubles as the
+      // "has another device pushed since I last did?" check.
+      const existing = await readSnapshot(token, cfg.repo, name);
+      if (existing) {
+        const prev = existing.obj || {};
         const st = loadState();
-        const remoteNewer = existing.env.savedAt && existing.env.device !== device &&
-          (!st || !st.savedAt || existing.env.savedAt > st.savedAt);
+        const remoteNewer = prev.savedAt && prev.device !== device &&
+          (!st || !st.savedAt || prev.savedAt > st.savedAt);
         if (remoteNewer && !confirm(
-          `Remote snapshot "${name}" was updated ${fmt(existing.env.savedAt)} from ${existing.env.device}.\n\n` +
+          `Remote snapshot "${name}" was updated ${fmt(prev.savedAt)} from ${prev.device}.\n\n` +
           `Overwrite it with this device's data?`)) { updateDirty(); return; }
       }
-      const savedAt = new Date().toISOString();
-      const env = await encryptEnvelope(data, passphrase, { app: appKind, name, savedAt, device });
-      let binId;
-      if (existing) { await jbUpdate(masterKey, existing.binId, env); binId = existing.binId; }
-      else { binId = await jbCreate(masterKey, cfg.collectionId, name, env); }
-      const map = loadBins(); map[name] = binId; saveBins(map);
-      saveState({ name, hash: await sha256Hex(stable(data)), savedAt });
-      alert(`Pushed "${name}" — ${count} entries.`);
+
+      const sha = await ghWrite(token, cfg.repo, pathFor(name), body, existing?.sha,
+        `${existing ? 'update' : 'add'} ${pathFor(name)} (${count} entries, from ${device})`);
+      const shas = loadShas(); shas[name] = sha; saveShas(shas);
+      saveState({ name, hash: await sha256Hex(stable(await buildExportData())), savedAt: body.savedAt });
+      alert(`Pushed "${name}" — ${count} entries → ${cfg.repo}/${pathFor(name)}`);
     } catch (e) {
       alert('Push failed: ' + e.message + describeNetworkError(e));
     } finally { busy = false; updateDirty(); }
@@ -541,26 +524,29 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
 
   async function doPull(name) {
     const cfg = loadConfig();
-    if (!cfg) { alert('Cloud not configured. Run: !cloud jsonbin <collectionId>'); return; }
-    if (!secureOk()) return;
-    const masterKey = await ensureMasterKey();
-    if (!masterKey) return;
+    if (!cfg) { alert('Cloud not configured. Run: !cloud github <owner>/<repo>'); return; }
+    const token = await ensureToken();
+    if (!token) return;
     busy = true; setInd('busy');
     try {
-      const found = await resolveBin(masterKey, cfg.collectionId, name);
+      const found = await readSnapshot(token, cfg.repo, name);
       if (!found) { alert(`No snapshot named "${name}" for ${appKind}.\n\nSee what's there:  !cloud list`); updateDirty(); return; }
-      if (found.env.app !== appKind) { alert(`"${name}" is a ${found.env.app} backup — it can't be loaded into ${appKind}.`); updateDirty(); return; }
+      const body = found.obj || {};
+      // Snapshots live under <app>/, so a cross-app mixup takes a deliberate edit —
+      // but check the tag anyway for files moved by hand.
+      if (body.app && body.app !== appKind) {
+        alert(`"${name}" is a ${body.app} snapshot — it can't be loaded into ${appKind}.`); updateDirty(); return;
+      }
+      if (body.ct) {
+        alert(`"${name}" is in the old encrypted format, which is no longer supported.\n\nPush a fresh snapshot to replace it.`);
+        updateDirty(); return;
+      }
       if (!confirm(
-        `Replace ALL local ${appKind} data with snapshot "${name}"\n(saved ${fmt(found.env.savedAt)} from ${found.env.device})?\n\nThis cannot be undone.`)) { updateDirty(); return; }
-      const passphrase = await ensurePassphrase();
-      if (!passphrase) { updateDirty(); return; }
-      let data;
-      try { data = await decryptEnvelope(found.env, passphrase); }
-      catch { await idbDel(SDB, 'passphrase'); alert('Decryption failed — wrong passphrase? It has been forgotten; try again.'); updateDirty(); return; }
-      const ok = await importJsonData(data, `cloud:${name}`);
+        `Replace ALL local ${appKind} data with snapshot "${name}"\n(saved ${fmt(body.savedAt)} from ${body.device || 'unknown'})?\n\nThis cannot be undone.`)) { updateDirty(); return; }
+      const ok = await importJsonData(body, `cloud:${name}`);
       if (ok) {
         await refresh();
-        saveState({ name, hash: await sha256Hex(stable(data)), savedAt: found.env.savedAt });
+        saveState({ name, hash: await sha256Hex(stable(await buildExportData())), savedAt: body.savedAt });
       }
     } catch (e) {
       alert('Pull failed: ' + e.message + describeNetworkError(e));
@@ -569,19 +555,21 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
 
   async function doDelete(name) {
     const cfg = loadConfig();
-    if (!cfg) { alert('Cloud not configured. Run: !cloud jsonbin <collectionId>'); return; }
+    if (!cfg) { alert('Cloud not configured. Run: !cloud github <owner>/<repo>'); return; }
     if (!name) { alert(`Usage: !cloud delete <name>\n\nList snapshots:  !cloud list`); return; }
-    if (!secureOk()) return;
-    const masterKey = await ensureMasterKey();
-    if (!masterKey) return;
+    const token = await ensureToken();
+    if (!token) return;
     busy = true; setInd('busy');
     try {
-      const found = await resolveBin(masterKey, cfg.collectionId, name);
+      const found = await readSnapshot(token, cfg.repo, name);
       if (!found) { alert(`No snapshot named "${name}" for ${appKind}.\n\nSee what's there:  !cloud list`); updateDirty(); return; }
-      if (!confirm(`Permanently DELETE remote snapshot "${name}" (saved ${fmt(found.env.savedAt)} from ${found.env.device})?\n\nThis deletes only the cloud copy — your local data is untouched. Cannot be undone.`)) { updateDirty(); return; }
-      await jbDelete(masterKey, found.binId);
-      const map = loadBins(); delete map[name]; saveBins(map);
-      // If we were tracking this snapshot, forget the sync state so the indicator recomputes.
+      const body = found.obj || {};
+      if (!confirm(
+        `Permanently DELETE remote snapshot "${name}" (saved ${fmt(body.savedAt)} from ${body.device || 'unknown'})?\n\n` +
+        `This removes the file from ${cfg.repo} — your local data is untouched, and the\n` +
+        `content stays in the repo's git history.`)) { updateDirty(); return; }
+      await ghDelete(token, cfg.repo, pathFor(name), found.sha, `delete ${pathFor(name)} (from ${device})`);
+      const shas = loadShas(); delete shas[name]; saveShas(shas);
       if (loadState()?.name === name) localStorage.removeItem(K.state);
       alert(`Deleted snapshot "${name}".`);
     } catch (e) {
@@ -590,7 +578,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   }
 
   async function doOff() {
-    if (!confirm('Disconnect cloud on this device and forget the stored master key + passphrase?\n\n(Your remote snapshots are not deleted.)')) return;
+    if (!confirm('Disconnect cloud on this device and forget the stored GitHub token?\n\n(Your remote snapshots are not deleted.)')) return;
     await detachCloud();
     updateDirty();
     alert('Cloud disconnected on this device.');
@@ -606,14 +594,14 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   // A CORS/offline failure surfaces as a bare "Failed to fetch" TypeError — add a hint.
   function describeNetworkError(e) {
     if (e && e.name === 'TypeError' && /fetch/i.test(e.message || '')) {
-      return '\n\n(Network/CORS error — check connectivity and that jsonbin.io is reachable from this origin.)';
+      return '\n\n(Network/CORS error — check connectivity and that api.github.com is reachable from this origin.)';
     }
     return '';
   }
 
   // ==========================================================================
   // !local — the second transport. Same verbs as !cloud, a directory on disk
-  // instead of a jsonbin collection. Same verbs, same envelope/hashing helpers, same
+  // instead of a repo directory. Same verbs, same hashing helpers, same
   // indicator — the transport is the only thing that differs. See CLAUDE.md for why
   // local snapshots are written unencrypted.
   //
@@ -676,8 +664,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
     localStorage.removeItem(K.config);
     localStorage.removeItem(K.bins);
     localStorage.removeItem(K.state);
-    await idbDel(SDB, 'masterKey');
-    await idbDel(SDB, 'passphrase');
+    await idbDel(SDB, 'token');
     if (loadMode() === 'cloud') saveMode(null);
   }
   async function detachLocal() {
@@ -695,7 +682,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
     const otherOn = other === 'cloud' ? cloudOn() : localOn();
     if (otherOn) {
       const what = other === 'cloud'
-        ? 'the jsonbin cloud connection (its master key and passphrase are forgotten on this device; remote snapshots are kept)'
+        ? 'the GitHub cloud connection (its token is forgotten on this device; remote snapshots are kept)'
         : `the local folder "${loadLocalCfg()?.dirName || ''}" (the files in it are kept)`;
       if (!confirm(
         `${appKind} syncs with one transport at a time.\n\n` +
@@ -746,14 +733,13 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   // Decision 2: written plain, read either way. An envelope is recognised by `ct`.
   async function decodeLocal(text) {
     const obj = JSON.parse(text);
+    // Snapshots written before encryption was dropped cannot be read any more. Say
+    // so rather than handing importJsonData a base64 blob it would silently ignore.
     if (obj && obj.ct) {
-      if (obj.app && obj.app !== appKind) throw new Error(`that file is a ${obj.app} snapshot`);
-      const passphrase = await ensurePassphrase();
-      if (!passphrase) return null;
-      try { return await decryptEnvelope(obj, passphrase); }
-      catch { await idbDel(SDB, 'passphrase'); throw new Error('decryption failed — wrong passphrase? It has been forgotten; try again.'); }
+      throw new Error('that file is in the old encrypted format, which is no longer supported');
     }
-    return obj; // plain {config, entries} or a bare array
+    if (obj && obj.app && obj.app !== appKind) throw new Error(`that file is a ${obj.app} snapshot`);
+    return obj; // {app, name, savedAt, device, config, entries}, {config, entries}, or a bare array
   }
 
   async function doLocalAttach() {
@@ -774,7 +760,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
       return;
     }
     // Pick the folder BEFORE claiming the mode. claimMode() detaches the other
-    // transport (forgetting the cloud master key and passphrase), so it must not
+    // transport (forgetting the cloud token), so it must not
     // run until the user has actually committed to a directory — otherwise
     // confirming the switch and then cancelling the picker leaves you disconnected
     // from both.
@@ -877,14 +863,15 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   async function doLocalPush(name) {
     busy = true; setInd('busy');
     try {
-      const data = await buildExportData();
-      const count = Array.isArray(data) ? data.length : (data.entries ? data.entries.length : 0);
-      const savedAt = new Date().toISOString();
+      // Same shape !cloud writes, so a snapshot is self-describing wherever it lands.
+      const data = await wrap(name);
+      const count = data.entries ? data.entries.length : 0;
+      const savedAt = data.savedAt;
 
       const via = localTransport();
       if (via !== 'folder') {
         downloadJson(data, fileFor(name));
-        if (via === 'browser') saveLocalState({ name, hash: await sha256Hex(stable(data)), savedAt });
+        if (via === 'browser') saveLocalState({ name, hash: await sha256Hex(stable(await buildExportData())), savedAt });
         return;
       }
       const dir = await ensureDir();
@@ -903,7 +890,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
       const w = await fh.createWritable();
       await w.write(JSON.stringify(data, null, 2));
       await w.close();
-      saveLocalState({ name, hash: await sha256Hex(stable(data)), savedAt });
+      saveLocalState({ name, hash: await sha256Hex(stable(await buildExportData())), savedAt });
       alert(`Pushed "${name}" — ${count} entries → ${dir.name}/${fileFor(name)}`);
     } catch (e) { alert('Push failed: ' + e.message); }
     finally { busy = false; updateDirty(); }
@@ -941,7 +928,7 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
         // A one-off import is not a snapshot — don't claim to be in sync with a file
         // the app has no way to find again.
         if (via !== 'oneoff') {
-          saveLocalState({ name: pulledName, hash: await sha256Hex(stable(data)), savedAt: new Date().toISOString() });
+          saveLocalState({ name: pulledName, hash: await sha256Hex(stable(await buildExportData())), savedAt: new Date().toISOString() });
         }
       }
     } catch (e) { alert('Pull failed: ' + e.message); }
@@ -999,12 +986,12 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
         if (!sub) await doStatus();
         else if (sub === 'push') await doPush(args[1] || DEFAULT);
         else if (sub === 'pull') await doPull(args[1] || DEFAULT);
-        else if (sub === 'jsonbin') await doConfigure(args[1]);
+        else if (sub === 'github') await doConfigure(args[1]);
         else if (sub === 'list') await doList();
         else if (sub === 'delete') await doDelete(args[1]);
         else if (sub === 'off') await doOff();
         else if (sub === 'device') doDevice(args.slice(1).join(' '));
-        else alert(`Unknown !cloud subcommand: "${sub}"\n\nTry:  !cloud · !cloud push · !cloud pull · !cloud list · !cloud delete <name> · !cloud jsonbin <id> · !cloud device <label> · !cloud off`);
+        else alert(`Unknown !cloud subcommand: "${sub}"\n\nTry:  !cloud · !cloud push · !cloud pull · !cloud list · !cloud delete <name> · !cloud github <owner/repo> · !cloud device <label> · !cloud off`);
         return true;
       }
     } catch (e) { alert('Cloud error: ' + e.message); return true; }

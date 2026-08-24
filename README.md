@@ -24,7 +24,7 @@ A static web app loaded in your browser. Entries live in the browser's IndexedDB
 - **Configurable title** — type `!title My Site` in the search bar to customize the `[feed]` header. Included in JSON exports.
 - **Theme support** — type `!theme amber`, `!theme white`, or `!theme green` in the search bar to switch the accent color. Persists across sessions and is included in JSON exports.
 - **Markdown-style links** — `[display text](url)` in content becomes a clickable link. Bare URLs are also auto-linked.
-- **Persistence** — IndexedDB is the store; files are backups you ask for. `!local` writes named JSON snapshots into a folder you pick (or downloads them where the File System Access API is missing), and `!cloud` does the same encrypted to jsonbin. Exactly one transport is connected at a time.
+- **Persistence** — IndexedDB is the store; files are backups you ask for. `!local` writes named JSON snapshots into a folder you pick (or downloads them where the File System Access API is missing), and `!cloud` does the same into a private GitHub repo. Exactly one transport is connected at a time.
 - **Auto-load on empty DB** — first visit loads `feed.json`, a single entry linking the in-app help and the repo. Delete it and the app is yours.
 - **Keyboard-friendly** — Esc cancels create/edit, Ctrl+Enter or Shift+Enter submits forms.
 - **Mobile responsive** — compact cards on small screens, tables on desktop.
@@ -163,7 +163,7 @@ store and a file is a backup, so writing one on every keystroke was solving a pr
 that did not exist — and the `☁`/`💾` indicator already tells you when a backup is
 stale.
 
-Use `!local` (folder on disk) or `!cloud` (encrypted, remote) instead. Both are
+Use `!local` (folder on disk) or `!cloud` (private GitHub repo) instead. Both are
 explicit push/pull with named snapshots. See the sections below.
 
 ### One-off export / import
@@ -178,38 +178,58 @@ A push in that state is treated as a throwaway export: it does **not** turn loca
 on, does not record a snapshot, and does not disconnect `!cloud`. Attach a folder when
 you want snapshots the app can track, list and delete.
 
-## Cloud snapshots (encrypted, optional)
+## Cloud snapshots (private GitHub repo)
 
-*Read-write mode only.* Push and pull **encrypted** snapshots to [jsonbin.io](https://jsonbin.io) to move your feed between devices without a synced file. Everything is encrypted **in your browser** before upload — jsonbin only stores ciphertext.
+Push and pull named snapshots as plain JSON files in a **private** GitHub repo, so you
+can move data between devices without a synced folder.
 
 **One-time setup**
 
-1. Make a free jsonbin.io account, create a **Collection**, and copy its Collection ID.
-2. In the search bar, run `!cloud jsonbin <collectionId>`. You'll be prompted (masked) for your jsonbin **Master Key**.
-3. On your first `!cloud push` you'll be prompted for an **encryption passphrase**. Use the *same* passphrase on every device.
+1. Create a **private** repo to hold snapshots — e.g. `pglite-snapshots`. It can be
+   empty; the app creates directories as it pushes.
+2. Create a [fine-grained personal access token](https://github.com/settings/tokens?type=beta)
+   scoped to **that repo only**, with **Contents: read and write**. Set an expiry.
+3. In the search bar, run `!cloud github <owner>/<repo>`. You'll be prompted (masked)
+   for the token, which is stored in this device's IndexedDB. `!cloud off` forgets it.
 
-Both secrets live in this device's IndexedDB (set once, not re-typed each session). `!cloud off` forgets them.
+Snapshots are written to `feed/<name>.json`, so **one repo can serve both apps** —
+`feed/` and `activities/` sit side by side and never collide.
 
 **Commands** (all in the search bar)
 
 | Command | What it does |
 |---|---|
-| `!cloud` | Show status: collection, device, what's stored, in-sync vs unsaved |
-| `!cloud jsonbin <collectionId>` | Configure the backend (prompts for master key) |
-| `!cloud list` | List your remote snapshots — no passphrase needed |
-| `!cloud delete <name>` | Permanently delete a remote snapshot |
-| `!cloud push [name]` | Encrypt + upload a snapshot (default name `main`) |
-| `!cloud pull [name]` | Download + decrypt + load a snapshot (replaces local data) |
-| `!cloud device <label>` | Label this device (`laptop`, `phone`) so `list` is readable |
-| `!cloud off` | Disconnect and forget secrets on this device |
+| `!cloud` | Show status: repo, device, token, in-sync vs unsaved |
+| `!cloud github <owner>/<repo>` | Configure the backend (prompts for the token) |
+| `!cloud list` | List this app's snapshots in the repo |
+| `!cloud delete <name>` | Delete a snapshot file (it stays in git history) |
+| `!cloud push [name]` | Upload a snapshot (default name `main`) |
+| `!cloud pull [name]` | Download and load a snapshot (replaces local data) |
+| `!cloud device <label>` | Label this device (`laptop`, `phone`) so `list` reads well |
+| `!cloud off` | Disconnect and forget the token on this device |
 
-Snapshots are **named** — keep a `main` plus backups, and pull any of them onto any device. A small `☁` indicator under the search bar shows when local changes haven't been pushed (click it to push).
+Snapshots are **named** — keep a `main` plus, say, a `pre-import` backup, and pull any
+of them onto any device. A small `☁` indicator under the search bar shows when local
+changes haven't been pushed (click it to push).
 
 **Notes**
 
-- Data is **gzip-compressed then encrypted** (WebCrypto **PBKDF2 (250k) → AES-GCM**), so the uploaded blob is small; needs a secure context (https or localhost). What's stored remotely is always a JSON envelope with a base64 `ct` field — jsonbin never sees gzip or your data.
-- Each snapshot carries a cleartext `app` tag, so trying to `!cloud pull` an *activities* backup into the feed is refused before anything is decrypted.
-- jsonbin's free tier caps bin size at 100 KB (Pro: 1 MB). Compression usually keeps you well under the free limit; a very large export may still need a self-hosted backend (planned: the `RemoteStore` interface lets a `robertvigil.com/vault` backend slot in behind the same commands).
+- **No encryption, deliberately.** Privacy comes from the repo being private — the
+  GitHub API requires authentication to read it. Encrypting would also defeat the main
+  reason to be on git: a diff between two revisions of an opaque blob tells you
+  nothing, while a diff of plain JSON tells you exactly what changed.
+- **You get real version history.** Every push is a commit. A bad push is recoverable
+  from the repo, and `!cloud delete` only removes the file going forward — the content
+  remains in history.
+- The file carries its own provenance — `{app, name, savedAt, device, config, entries}`
+  — which is what `!cloud list` reports and what warns you before overwriting a
+  snapshot another device pushed more recently.
+- `!local` writes the **same shape**, so a snapshot is interchangeable between the two
+  transports.
+- Files over about 1 MB are fetched via the raw URL automatically. Below that, the
+  Contents API returns them inline.
+- Snapshots written by the older encrypted format can no longer be read; the app says
+  so rather than importing garbage. Push a fresh snapshot to replace them.
 
 ## Content formatting
 
@@ -261,14 +281,14 @@ Names are bare words, no quotes and no paths: `!local push before-trip` writes
 
 **Notes**
 
-- **Files are plain, unencrypted `{config, entries}`** — the same shape the app has
-  always exported. That's deliberate: PGlite's IndexedDB store is itself unencrypted,
-  so encrypting a backup sitting next to a plaintext browser profile buys nothing.
-  If the folder is inside a synced directory (Dropbox, Syncthing), plaintext does
-  leave the machine — use `!cloud` for that case.
-- Snapshots written by `!cloud` **can** be pulled locally: `!local pull` detects an
-  encrypted envelope by its `ct` field and asks for the passphrase. Only writing is
-  simplified.
+- **Files are plain, unencrypted `{app, name, savedAt, device, config, entries}`.**
+  That's deliberate: PGlite's IndexedDB store is itself unencrypted, so encrypting a
+  backup sitting next to a plaintext browser profile buys nothing. If the folder is
+  inside a synced directory (Dropbox, Syncthing), plaintext does leave the machine —
+  use `!cloud` and a private repo for that case.
+- **`!cloud` and `!local` write the same shape**, so a snapshot from either transport
+  loads into the other — copy a file out of the repo into your folder, or push a
+  locally-pulled snapshot straight to the repo.
 - **No File System Access API?** (Firefox, Safari, plain HTTP) `!local` still works —
   `push` downloads the file and `pull` opens a file picker. Same commands, degraded
   transport underneath.
@@ -349,7 +369,7 @@ Symbolic dates and relative offsets (`after:today`, `before:+30d`) survive copy-
 Clone the repo, deploy to your own domain, and you get the full workflow:
 
 1. Create entries, tag them with #hashtags
-2. Snapshot your data with `!local push` (a folder on disk) or `!cloud push` (encrypted, jsonbin)
+2. Snapshot your data with `!local push` (a folder on disk) or `!cloud push` (a private GitHub repo)
 3. Pull that snapshot on any other browser or device
 
 The app is single-user by design: every visitor gets their own database in their own

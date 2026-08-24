@@ -17,7 +17,7 @@ async function boot(opts = {}) {
   return { ...env, api };
 }
 
-const cloudCfg = () => localStorage.setItem('feed.cloud.config', JSON.stringify({ backend: 'jsonbin', collectionId: 'c1' }));
+const cloudCfg = () => localStorage.setItem('feed.cloud.config', JSON.stringify({ backend: 'github', repo: 'me/snapshots' }));
 const localCfg = () => localStorage.setItem('feed.local.config', JSON.stringify({ backend: 'fsdir', dirName: 'snapshots' }));
 const mode = () => localStorage.getItem('feed.sync.mode');
 
@@ -134,7 +134,12 @@ test('push writes the file, list sees it, delete removes it', async () => {
   await api.command('local', ['attach']);
   await api.command('local', ['push']);
   assert.ok(dir._files.has('feed.json'), 'push wrote feed.json');
-  assert.deepEqual(JSON.parse(dir._files.get('feed.json').text), ENTRIES, 'plain {config, entries}, unencrypted');
+  const written = JSON.parse(dir._files.get('feed.json').text);
+  assert.equal(written.ct, undefined, 'written in the clear — no encryption envelope');
+  assert.deepEqual({ config: written.config, entries: written.entries }, ENTRIES, 'carries the export verbatim');
+  assert.equal(written.app, 'feed', 'self-describing: app');
+  assert.equal(written.name, 'feed', 'self-describing: snapshot name');
+  assert.ok(written.savedAt && written.device, 'self-describing: provenance');
 
   await api.command('local', ['list']);
   assert.match(calls.alerts.at(-1), /feed/);

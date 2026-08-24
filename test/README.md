@@ -30,7 +30,7 @@ Note the glob — `--test test/` does not work. The same binary gives you
 `js/cloud.js` imports nothing and receives every app dependency by injection
 (`buildExportData`, `importJsonData`, `refresh`, `syncToFile`). That makes it
 runnable outside a browser once `harness.mjs` supplies fakes for `localStorage`,
-IndexedDB, the DOM, and the File System Access API.
+IndexedDB, the DOM, the File System Access API, and `fetch` (a fake GitHub Contents API backed by an in-memory repo).
 
 The fake directory handle is a working in-memory filesystem, so `!local push`,
 `pull`, `list`, `delete` and permission expiry all genuinely execute.
@@ -39,6 +39,7 @@ The fake directory handle is a working in-memory filesystem, so `!local push`,
 
 | File | Covers |
 |---|---|
+| `cloud-github.test.mjs` | The `!cloud` transport against a fake GitHub Contents API: push/pull/list/delete, SHA handling on replace, cross-app refusal, legacy encrypted files |
 | `sync-mode.test.mjs` | `!cloud` / `!local` behavior: mode exclusivity, the indicator, push/pull/list/delete, the no-FSA and no-folder fallbacks |
 | `crud-smoke.test.mjs` | `setupCrud` actually initializes in both apps and returns its API; `importJsonData` rolls back a failed import |
 | `dom-contract.test.mjs` | Every `getElementById` target exists in `index.html`, no orphan ids, and the UI deleted in phases 3–4 stays deleted |
