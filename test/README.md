@@ -42,6 +42,7 @@ The fake directory handle is a working in-memory filesystem, so `!local push`,
 | `cloud-github.test.mjs` | The `!cloud` transport against a fake GitHub Contents API: push/pull/list/delete, SHA handling on replace, cross-app refusal, legacy encrypted files |
 | `sync-mode.test.mjs` | `!cloud` / `!local` behavior: mode exclusivity, the indicator, push/pull/list/delete, the no-FSA and no-folder fallbacks |
 | `crud-smoke.test.mjs` | `setupCrud` actually initializes in both apps and returns its API; `importJsonData` rolls back a failed import |
+| `hashtag-parity.test.mjs` | The default-view filter in `app.js` and the tag-cloud extractor in `search.js` classify hashtags identically |
 | `dom-contract.test.mjs` | Every `getElementById` target exists in `index.html`, no orphan ids, and the UI deleted in phases 3–4 stays deleted |
 | `drift.test.mjs` | `js/cloud.js` is byte-identical to the pglite-activities copy |
 | `harness.mjs` | Fake `localStorage`, IndexedDB, DOM and File System Access API |

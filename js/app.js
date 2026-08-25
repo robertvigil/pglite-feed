@@ -199,10 +199,17 @@ async function refresh() {
   // Build WHERE clause — starts at $1 (no fixed date params anymore)
   const search = buildSearchClauses(parsed, 1);
 
-  // Default mode: show entries with no hashtags OR entries tagged #pin
+  // Default mode: show entries with no hashtags OR entries tagged #pin.
+  //
+  // The character class must stay in sync with the tag-cloud extractor in
+  // search.js (/#\\w+/g). It used to be [a-zA-Z], which meant a tag starting with
+  // a digit — #2027budget, #1099 — was counted by the tag cloud and findable by
+  // search, but did NOT hide its entry from the default view. Tagged reference
+  // data leaked onto the front page, and only for tags that happened to start
+  // with a number.
   let noTagFilter = '';
   if (parsed.mode === 'default') {
-    noTagFilter = " AND (feed_content !~ '(^|\\s)#[a-zA-Z]' OR feed_content ILIKE '%#pin%')";
+    noTagFilter = " AND (feed_content !~ '(^|\\s)#[a-zA-Z0-9_]' OR feed_content ILIKE '%#pin%')";
   }
 
   // Totals

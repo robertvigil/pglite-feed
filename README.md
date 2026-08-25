@@ -14,7 +14,7 @@ A static web app loaded in your browser. Entries live in the browser's IndexedDB
 
 - **Date filtering** — use `after:2026-04-01` and `before:2026-04-14` in the search bar for date ranges. Symbolic dates (`after:today`, `before:week-end`) and relative offsets (`+7d`, `-30d`) are supported and resolve at parse time, making `?search=after:today` URLs evergreen.
 - **Search** — multi-word AND with exclusion: `"pglite feed"` matches both terms, `"-exclude"` filters out a term.
-- **Hashtag categories** — use `#tags` in content for categories (e.g., `#links`, `#notes`), then search for `#tag` to filter.
+- **Hashtag categories** — use `#tags` in content for categories (e.g., `#links`, `#notes`, `#2027budget`), then search for `#tag` to filter. A tag is `#` followed by letters, digits or underscores, so tags may start with a number.
 - **Smart default view** — empty search shows entries without hashtags, plus any entry tagged `#pin`. Tagged reference data stays hidden until you search for it. Use `#pin` to force important tagged entries onto the front page.
 - **Pin to front page** — tag any entry with `#pin` and it appears on the default view regardless of other tags (e.g., `server setup guide #sysadmin #pin`).
 - **Tag cloud** — type `#` in the search bar to see all hashtags with counts and percentages. Click any tag to search for it.
