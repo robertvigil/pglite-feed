@@ -30,7 +30,9 @@
 //
 // Commands (wired from each app's handleCommand):
 //   !cloud                      status
-//   !cloud github <owner/repo>  configure backend (prompts, masked, for the token)
+//   !cloud github <owner/repo> [token]
+//                               configure backend; token optional — omitted, it is
+//                               asked for at a masked prompt instead of typed in clear
 //   !cloud list                 list this app's remote snapshots
 //   !cloud delete <name>        permanently delete a remote snapshot
 //   !cloud device <label>       set this device's label ("laptop", "phone")
@@ -405,13 +407,19 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
   }
 
   // --- commands ---
-  async function doConfigure(repo) {
+  // The token argument is optional. Given, it configures repo + token in one shot —
+  // handy when setting up a new device. Omitted, the masked prompt asks for it, which
+  // is the better path when anyone can see your screen: an inline token is typed in
+  // clear text. app.js clears the search box before dispatching so it is not left
+  // sitting on screen behind the dialogs below.
+  async function doConfigure(repo, token) {
     if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
       alert(
-        'Usage: !cloud github <owner>/<repo>\n\n' +
+        'Usage: !cloud github <owner>/<repo> [token]\n\n' +
         'Create a PRIVATE repo to hold snapshots, then paste owner/name here.\n' +
-        'You will be prompted for a fine-grained personal access token with\n' +
-        'Contents: read and write, scoped to that one repo.\n\n' +
+        'Supply a fine-grained personal access token (Contents: read and write,\n' +
+        'scoped to that one repo) as a third argument to connect in one step, or\n' +
+        'leave it off and enter it at the masked prompt instead.\n\n' +
         `Snapshots are written to ${appKind}/<name>.json inside it, so one repo can\n` +
         'serve both apps.'
       );
@@ -419,6 +427,21 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
     }
     if (!(await claimMode('cloud'))) return;
     saveConfig({ backend: 'github', repo });
+
+    if (token) {
+      await idbSet(SDB, 'token', token);
+      // Sanity-check the shape only — never block on it, since GitHub is free to mint
+      // new prefixes. A genuinely bad token fails at the first push with a clear 401.
+      const looksRight = /^(github_pat_|ghp_)/.test(token);
+      alert(
+        `Cloud configured — ${repo}.\n\n` +
+        `Token stored on this device${looksRight ? '' : " (note: it doesn't look like a GitHub PAT — check it if the first push fails)"}.\n\n` +
+        `Next:  !cloud push   writes ${pathFor(DEFAULT)}.`
+      );
+      updateDirty();
+      return;
+    }
+
     const t = await ensureToken();
     if (!t) alert(`Saved ${repo}. No token yet — you'll be prompted on your first !cloud push.`);
     else alert(`Cloud configured — ${repo}.\n\nNext:  !cloud push   writes ${pathFor(DEFAULT)}.`);
@@ -986,12 +1009,12 @@ export function setupCloud({ appKind, buildExportData, importJsonData, refresh }
         if (!sub) await doStatus();
         else if (sub === 'push') await doPush(args[1] || DEFAULT);
         else if (sub === 'pull') await doPull(args[1] || DEFAULT);
-        else if (sub === 'github') await doConfigure(args[1]);
+        else if (sub === 'github') await doConfigure(args[1], args[2]);
         else if (sub === 'list') await doList();
         else if (sub === 'delete') await doDelete(args[1]);
         else if (sub === 'off') await doOff();
         else if (sub === 'device') doDevice(args.slice(1).join(' '));
-        else alert(`Unknown !cloud subcommand: "${sub}"\n\nTry:  !cloud · !cloud push · !cloud pull · !cloud list · !cloud delete <name> · !cloud github <owner/repo> · !cloud device <label> · !cloud off`);
+        else alert(`Unknown !cloud subcommand: "${sub}"\n\nTry:  !cloud · !cloud push · !cloud pull · !cloud list · !cloud delete <name> · !cloud github <owner/repo> [token] · !cloud device <label> · !cloud off`);
         return true;
       }
     } catch (e) { alert('Cloud error: ' + e.message); return true; }

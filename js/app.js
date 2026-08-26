@@ -126,8 +126,16 @@ async function handleCommand(input) {
   // Both transports live in cloud.js behind one command() surface: !cloud (remote,
   // encrypted) and !local (a folder on disk). Exactly one is connected at a time.
   if (cmd === 'cloud' || cmd === 'local') {
+    // A token pasted inline (!cloud github owner/repo <pat>) must not sit visible in
+    // the search box while the configure flow runs — that flow shows a confirm and an
+    // alert, so the secret would be on screen for as long as those are up. Clear it
+    // BEFORE dispatching, not after. Everything else keeps the old behaviour, where an
+    // unrecognised subcommand is left in the box so it can be corrected.
+    const hasInlineSecret =
+      cmd === 'cloud' && parts[1]?.toLowerCase() === 'github' && parts.length > 3;
+    if (hasInlineSecret) document.getElementById('search').value = '';
     const handled = await cloud.command(cmd, parts.slice(1));
-    if (handled) document.getElementById('search').value = '';
+    if (handled && !hasInlineSecret) document.getElementById('search').value = '';
     return handled;
   }
 

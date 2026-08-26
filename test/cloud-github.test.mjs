@@ -93,3 +93,88 @@ test('an old encrypted snapshot is reported, not silently mangled', async () => 
   assert.equal(imported.length, 0, 'nothing was imported');
   assert.match(alerts.at(-1), /old encrypted format/);
 });
+
+// --- one-shot connect: !cloud github <owner>/<repo> <pat> ---
+
+test('an inline token is stored without a prompt', async () => {
+  const env = installBrowser();
+  const gh = installGitHub({ token: 'github_pat_inline' });
+  const { setupCloud } = await import('../js/cloud.js?' + Math.random());
+  const api = setupCloud({
+    appKind: 'feed', buildExportData: async () => ENTRIES,
+    importJsonData: async () => true, refresh: async () => {},
+  });
+
+  await api.command('cloud', ['github', 'me/snapshots', 'github_pat_inline']);
+  assert.deepEqual(JSON.parse(localStorage.getItem('feed.cloud.config')),
+    { backend: 'github', repo: 'me/snapshots' });
+  assert.equal(env.idb.get('pglite-feed-cloud').get('token'), 'github_pat_inline',
+    'the token went straight to the secrets store');
+
+  // and it works end to end without ever prompting
+  await api.command('cloud', ['push']);
+  assert.ok(gh.repo.get('feed/main.json'), 'pushed with the inline token');
+  const auth = gh.calls.find((c) => c.method === 'PUT').auth;
+  assert.equal(auth, 'Bearer github_pat_inline');
+});
+
+test('the success message never echoes the token back', async () => {
+  const env = installBrowser();
+  installGitHub({ token: 'github_pat_secret_value' });
+  const { setupCloud } = await import('../js/cloud.js?' + Math.random());
+  const api = setupCloud({
+    appKind: 'feed', buildExportData: async () => ENTRIES,
+    importJsonData: async () => true, refresh: async () => {},
+  });
+  await api.command('cloud', ['github', 'me/snapshots', 'github_pat_secret_value']);
+  for (const m of env.calls.alerts) {
+    assert.ok(!m.includes('github_pat_secret_value'), `token leaked into an alert: ${m}`);
+  }
+  assert.match(env.calls.alerts.at(-1), /Cloud configured/);
+});
+
+test('a token of an unexpected shape is accepted but flagged', async () => {
+  const env = installBrowser();
+  installGitHub({ token: 'not-a-pat' });
+  const { setupCloud } = await import('../js/cloud.js?' + Math.random());
+  const api = setupCloud({
+    appKind: 'feed', buildExportData: async () => ENTRIES,
+    importJsonData: async () => true, refresh: async () => {},
+  });
+  await api.command('cloud', ['github', 'me/snapshots', 'not-a-pat']);
+  assert.equal(env.idb.get('pglite-feed-cloud').get('token'), 'not-a-pat',
+    'stored anyway — GitHub may mint new prefixes, so never block on shape');
+  assert.match(env.calls.alerts.at(-1), /doesn't look like a GitHub PAT/);
+});
+
+test('omitting the token still routes through the masked prompt', async () => {
+  const env = installBrowser();
+  installGitHub();
+  const { setupCloud } = await import('../js/cloud.js?' + Math.random());
+  const api = setupCloud({
+    appKind: 'feed', buildExportData: async () => ENTRIES,
+    importJsonData: async () => true, refresh: async () => {},
+  });
+  // the fake DOM never resolves the modal, so the prompt path is what we detect:
+  // config is saved, no token lands, and nothing throws
+  const done = api.command('cloud', ['github', 'me/snapshots']);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(JSON.parse(localStorage.getItem('feed.cloud.config')),
+    { backend: 'github', repo: 'me/snapshots' }, 'repo saved before the prompt');
+  assert.equal(env.idb.get('pglite-feed-cloud')?.get('token'), undefined,
+    'no token stored — it is being asked for, not typed');
+  void done;
+});
+
+test('usage text documents the token as optional', async () => {
+  const env = installBrowser();
+  installGitHub();
+  const { setupCloud } = await import('../js/cloud.js?' + Math.random());
+  const api = setupCloud({
+    appKind: 'feed', buildExportData: async () => ENTRIES,
+    importJsonData: async () => true, refresh: async () => {},
+  });
+  await api.command('cloud', ['github']);          // no repo -> usage
+  assert.match(env.calls.alerts.at(-1), /\[token\]/);
+  assert.match(env.calls.alerts.at(-1), /masked prompt/);
+});

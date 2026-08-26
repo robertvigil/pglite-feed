@@ -236,7 +236,18 @@ timestamps.
 > fine-grained token above is the better choice.
 
 **3. Connect the app.** In the search bar, run `!cloud github <owner>/<repo>`. You'll
-be prompted (masked) for the token. It's stored in this device's IndexedDB, so you're
+be prompted (masked) for the token.
+
+Or do it in one step by passing the token as a third argument:
+
+```
+!cloud github <owner>/<repo> github_pat_...
+```
+
+Convenient when setting up a new device. The trade-off is that the token is typed in
+**clear text** rather than into a masked field — it never reaches the URL, your history
+or a shareable link, and the search box is cleared before any dialog appears, but it is
+visible while you type it. Prefer the two-step form if anyone can see your screen. It's stored in this device's IndexedDB, so you're
 only asked once per device — paste the same token on each device, or create one per
 device so you can revoke them independently. `!cloud off` forgets it.
 
@@ -253,7 +264,7 @@ Snapshots are written to `feed/<name>.json`, so **one repo can serve both apps**
 | Command | What it does |
 |---|---|
 | `!cloud` | Show status: repo, device, token, in-sync vs unsaved |
-| `!cloud github <owner>/<repo>` | Configure the backend (prompts for the token) |
+| `!cloud github <owner>/<repo> [token]` | Configure the backend. Token optional — omitted, it's asked for at a masked prompt |
 | `!cloud list` | List this app's snapshots in the repo |
 | `!cloud delete <name>` | Delete a snapshot file (it stays in git history) |
 | `!cloud push [name]` | Upload a snapshot (default name `main`) |
