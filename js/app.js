@@ -256,11 +256,14 @@ async function refresh() {
     const dateStr = new Date(row.feed_date).toISOString().split('T')[0];
     const [y, m, d] = dateStr.split('-').map(Number);
     const dayName = dayNames[new Date(y, m - 1, d).getDay()];
-    const displayDate = `${m}/${d}/${String(y).slice(-2)}`;
+    // 1900-01-01 is the "undated" sentinel (see crud.js) — render the cell empty
+    // rather than showing a date the user never chose.
+    const undated = dateStr === '1900-01-01';
+    const displayDate = undated ? '' : `${m}/${d}/${String(y).slice(-2)}`;
 
     html += `<tr data-id="${row.id}" data-date="${dateStr}" data-content="${escapeHtml(row.feed_content)}">
       <td class="content-cell md-view">${renderMarkdown(row.feed_content)}</td>
-      <td>${displayDate} (${dayName})</td>`;
+      <td>${undated ? '' : `${displayDate} (${dayName})`}</td>`;
 
     html += `<td class="actions">
         <button class="edit" title="Edit">✎</button>

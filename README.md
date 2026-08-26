@@ -14,6 +14,12 @@ A static web app loaded in your browser. Entries live in the browser's IndexedDB
 
 - **Date filtering** — use `after:2026-04-01` and `before:2026-04-14` in the search bar for date ranges. Symbolic dates (`after:today`, `before:week-end`) and relative offsets (`+7d`, `-30d`) are supported and resolve at parse time, making `?search=after:today` URLs evergreen.
 - **Search** — multi-word AND with exclusion: `"pglite feed"` matches both terms, `"-exclude"` filters out a term.
+- **Undated entries** — the date field is optional and hidden behind a `📅` button; entries
+  are undated by default. Undated entries sort *below* dated ones and, among themselves,
+  **alphabetically by content** — so reference notes pulled up by `#tag` order by their text
+  rather than by when you happened to type them. Stored internally as `1900-01-01` and shown
+  as a blank date cell. Note this means `after:` / `before:` searches exclude them, which is
+  intended: they have no date to match.
 - **Hashtag categories** — use `#tags` in content for categories (e.g., `#links`, `#notes`, `#2027budget`), then search for `#tag` to filter. A tag is `#` followed by letters, digits or underscores, so tags may start with a number.
 - **Smart default view** — empty search shows entries without hashtags, plus any entry tagged `#pin`. Tagged reference data stays hidden until you search for it. Use `#pin` to force important tagged entries onto the front page.
 - **Pin to front page** — tag any entry with `#pin` and it appears on the default view regardless of other tags (e.g., `server setup guide #sysadmin #pin`).
@@ -51,6 +57,7 @@ Search runs as you type (debounced via the `input` event); commands and the filt
 | `after:today` / `before:tomorrow` | Symbolic date names — see table below. Resolved at parse time, so `?search=after:today` URLs are evergreen. |
 | `after:-7d` / `before:+30d` | Relative offsets from today. Format: `[+-]<int><unit>` where unit is `d`, `w`, `m`, `y`. |
 | `after:... before:... #git` | All filters combine with AND. |
+| *(any date filter)* | **Excludes undated entries.** They have no date to match, so `after:2020` will not return them. |
 | `-#git` | Exclude entries containing `#git`. |
 | `#pin` | The pin override — any entry tagged `#pin` shows on the default view regardless of other tags. |
 
@@ -97,6 +104,8 @@ Single-character search terms (`a`, `i`, etc.) are stripped as noise — too bro
 
 Invalid date values (e.g., `after:notadate`) silently drop the filter rather than erroring — your search still runs, just without the date constraint.
 
+**Undated entries never match a date filter.** They are stored at the `1900-01-01` sentinel (see Schema), so any realistic `after:` bound excludes them. If you want a date range *and* your undated reference notes, run the two searches separately.
+
 ### Clicking tags in the cloud
 
 Click any tag → search is replaced with just that tag (drops any filter that was scoping the cloud). To drill deeper, type a fresh `# tag1 tag2` query.
@@ -116,6 +125,20 @@ CREATE TABLE feed (
 
 - Categories are handled via `#tags` in `feed_content`, searchable with the built-in search
 - The `UNIQUE` constraint prevents duplicate entries
+
+**Undated entries use a sentinel, not `NULL`.** `feed_date` is `NOT NULL` *and* half of the
+`UNIQUE` key, and the table is created with `CREATE TABLE IF NOT EXISTS` — so every existing
+browser database already carries both constraints. Making the column nullable would require an
+`ALTER TABLE` migration against each device's IndexedDB. Instead, an undated entry is stored as
+**`1900-01-01`** and rendered as a blank date cell.
+
+The sentinel is deliberately in the past. Sort order is `feed_date DESC, feed_content ASC`, so
+undated entries sink below dated ones and — sharing one date — fall through to the secondary
+key, coming back **alphabetically by content**. That is the point: reference notes pulled up by
+`#tag` order by their text, which you control, rather than by the day you happened to type them.
+
+One consequence: since all undated entries share a date, two entries with *identical* text
+would collide on the `UNIQUE` key. On import that row is dropped silently (`ON CONFLICT DO NOTHING`).
 
 ## Running it
 

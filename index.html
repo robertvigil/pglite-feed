@@ -22,7 +22,8 @@
   <form class="create-form" id="create-form">
     <textarea id="new-content" class="content-input" rows="10" placeholder="content (use #tags for categories)" required></textarea>
     <div class="form-row">
-      <input type="date" id="new-date" required>
+      <button type="button" id="new-date-toggle" class="date-toggle" title="Add a date (entries are undated by default)">📅</button>
+      <input type="date" id="new-date" class="date-field" hidden>
       <div class="actions">
         <button type="submit" title="Save">✓</button>
         <button type="button" class="cancel" id="create-cancel" title="Cancel">↺</button>

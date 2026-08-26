@@ -24,6 +24,28 @@ export function setupCrud(db, refreshFn) {
   const createCancel = document.getElementById('create-cancel');
   const outputEl = document.getElementById('output');
 
+  // --- undated entries -------------------------------------------------------
+  // feed_date is NOT NULL and is half of UNIQUE(feed_date, feed_content), so a
+  // genuinely null date would need an ALTER TABLE against every existing browser
+  // database. A sentinel avoids the migration entirely: blank in the UI, stored as
+  // 1900-01-01, rendered blank again by app.js.
+  //
+  // Chosen far in the past on purpose — undated notes sink below dated ones rather
+  // than pinning to the top. Because the sort is (feed_date DESC, feed_content ASC),
+  // everything sharing the sentinel falls through to the secondary key and comes back
+  // ALPHABETICALLY, which is the real payoff: reference notes pulled up by #tag order
+  // by their text, which you control, instead of by an entry date you don't.
+  const UNDATED = '1900-01-01';
+  const dateOrSentinel = (v) => (v && v.trim() ? v : UNDATED);
+
+  // Swap the 📅 button for the real date input, focused, picker open where supported.
+  function revealDateField(toggleEl, inputEl) {
+    toggleEl.hidden = true;
+    inputEl.hidden = false;
+    inputEl.focus();
+    try { inputEl.showPicker(); } catch { /* not supported here — the field is usable anyway */ }
+  }
+
 
   async function buildExportData() {
     const result = await db.query(`
@@ -115,7 +137,10 @@ export function setupCrud(db, refreshFn) {
   // --- Create form ---
   function showCreateForm() {
     createForm.classList.add('open');
-    document.getElementById('new-date').value = new Date().toISOString().split('T')[0];
+    // Undated by default — the 📅 button reveals the field when a date is wanted.
+    const d = document.getElementById('new-date');
+    const t = document.getElementById('new-date-toggle');
+    d.value = ''; d.hidden = true; t.hidden = false;
     document.getElementById('new-content').focus();
   }
 
@@ -142,9 +167,13 @@ export function setupCrud(db, refreshFn) {
     }
   });
 
+  document.getElementById('new-date-toggle').addEventListener('click', () => {
+    revealDateField(document.getElementById('new-date-toggle'), document.getElementById('new-date'));
+  });
+
   createForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const date = document.getElementById('new-date').value;
+    const date = dateOrSentinel(document.getElementById('new-date').value);
     const content = document.getElementById('new-content').value;
     try {
       await db.query(
@@ -185,7 +214,10 @@ export function setupCrud(db, refreshFn) {
       tr.innerHTML = `
         <td class="edit-row-1"><textarea class="edit-content" rows="10">${tr.dataset.content}</textarea></td>
         <td class="edit-row-2">
-          <input type="date" class="edit-date" value="${tr.dataset.date}">
+          ${tr.dataset.date === UNDATED
+            ? `<button type="button" class="date-toggle edit-date-toggle" title="Add a date">\u{1F4C5}</button>
+               <input type="date" class="edit-date date-field" value="" hidden>`
+            : `<input type="date" class="edit-date date-field" value="${tr.dataset.date}">`}
           <button class="save" title="Save">✓</button>
           <button class="cancel" title="Cancel">↺</button>
         </td>
@@ -193,8 +225,13 @@ export function setupCrud(db, refreshFn) {
       return;
     }
 
+    if (btn.classList.contains('edit-date-toggle')) {
+      revealDateField(btn, tr.querySelector('.edit-date'));
+      return;
+    }
+
     if (btn.classList.contains('save')) {
-      const date = tr.querySelector('.edit-date').value;
+      const date = dateOrSentinel(tr.querySelector('.edit-date').value);
       const content = tr.querySelector('.edit-content').value;
       try {
         await db.query(

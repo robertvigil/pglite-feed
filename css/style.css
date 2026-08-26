@@ -114,6 +114,14 @@ td a { color: var(--accent); }
 .totals .label { color: #888; }
 .totals .value { color: var(--accent); font-weight: bold; }
 
+/* Undated-by-default: the 📅 reveals the date field only when a date is wanted. */
+.date-toggle {
+  background: transparent; border: none; color: #555;
+  font-size: 15px; line-height: 1; padding: 2px 4px;
+  cursor: pointer; font-family: inherit;
+}
+.date-toggle:hover { color: var(--accent); }
+
 /* Create form */
 .create-form {
   display: none; flex-direction: column; gap: 8px;
