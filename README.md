@@ -4,7 +4,7 @@ A browser-only microblog/feed powered by [PGlite](https://pglite.dev/) (PostgreS
 
 <img src="screenshots/mobile.jpg" alt="Mobile screenshot" width="300">
 
-**Live demo:** [robertvigil.com/feed](https://robertvigil.com/public/feed)
+**Live demo:** [robertvigil.github.io/pglite-feed](https://robertvigil.github.io/pglite-feed/)
 
 ## How it works
 
